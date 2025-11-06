@@ -1,0 +1,3 @@
+rootProject.name = "VMPlayer"
+include ':app'
+include ':media'
