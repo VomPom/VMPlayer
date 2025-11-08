@@ -1,7 +1,6 @@
 package com.vompom.media.docode.decorder
 
-import com.vompom.media.docode.model.SampleState
-import com.vompom.media.docode.model.TimeRange
+import com.vompom.media.model.SampleState
 
 /**
  *

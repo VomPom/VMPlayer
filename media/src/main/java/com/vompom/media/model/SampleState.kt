@@ -1,4 +1,4 @@
-package com.vompom.media.docode.model
+package com.vompom.media.model
 
 import com.vompom.media.docode.decorder.IDecoder
 

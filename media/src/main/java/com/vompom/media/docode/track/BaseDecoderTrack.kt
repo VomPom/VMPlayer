@@ -1,8 +1,8 @@
 package com.vompom.media.docode.track
 
 import com.vompom.media.docode.decorder.IDecoder
-import com.vompom.media.docode.model.SampleState
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.SampleState
+import com.vompom.media.model.TrackSegment
 
 /**
  *
@@ -18,6 +18,7 @@ abstract class BaseDecoderTrack : IDecoderTrack {
     protected var currentDecoder: IDecoder? = null
     protected val decoderLock = Any()
     protected var currentPlayUs: Long = 0L
+    protected var exportMode = false
 
     override fun setTrackSegments(segmentList: List<TrackSegment>) {
         this.segmentList.apply {

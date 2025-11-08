@@ -12,8 +12,6 @@ interface IReader {
         onBufferRead: (Long) -> Unit,
         onFinished: () -> Unit
     )
-
-    fun prepare()
     fun start()
     fun stop()
     fun isRunning(): Boolean

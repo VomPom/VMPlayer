@@ -1,4 +1,4 @@
-package com.vompom.media.export.writer
+package com.vompom.media.export.encoder
 
 import android.media.MediaFormat
 

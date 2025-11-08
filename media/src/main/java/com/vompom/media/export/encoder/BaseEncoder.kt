@@ -1,4 +1,4 @@
-package com.vompom.media.export.writer
+package com.vompom.media.export.encoder
 
 import android.media.MediaCodec
 import android.media.MediaFormat
@@ -71,9 +71,6 @@ abstract class BaseEncoder : IEncoder {
 
         while (!eosReceived) {
             val outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
-            if(this is VideoEncoder) {
-                VLog.d("--julis outputBufferIndex: $outputBufferIndex")
-            }
             when {
                 outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
                     if (waitForEOS) {

@@ -1,7 +1,7 @@
 package com.vompom.media.export.reader
 
 import android.view.Surface
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.TrackSegment
 import com.vompom.media.docode.track.VideoDecoderTrack
 
 /**
@@ -23,7 +23,7 @@ class VideoReader(segments: List<TrackSegment>, val surface: Surface, fps: Int) 
         }
     }
 
-    override fun start() {
+    override fun onStart() {
         val durationUs = durationUs()
         while (isRunning() && readTimeUs < durationUs) {
             videoDecoderTrack?.readSample(readTimeUs)

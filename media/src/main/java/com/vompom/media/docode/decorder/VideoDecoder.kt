@@ -3,8 +3,8 @@ package com.vompom.media.docode.decorder
 import android.media.MediaCodec
 import android.util.Size
 import android.view.Surface
-import com.vompom.media.docode.model.Asset
-import com.vompom.media.docode.model.SampleState
+import com.vompom.media.model.Asset
+import com.vompom.media.model.SampleState
 import com.vompom.media.utils.VLog
 import com.vompom.media.utils.usToS
 import java.nio.ByteBuffer

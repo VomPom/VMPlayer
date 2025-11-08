@@ -4,8 +4,8 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.MediaCodec
 import android.media.MediaFormat
-import com.vompom.media.docode.model.Asset
-import com.vompom.media.docode.model.SampleState
+import com.vompom.media.model.Asset
+import com.vompom.media.model.SampleState
 import com.vompom.media.utils.VLog
 import com.vompom.media.utils.usToS
 import java.nio.ByteBuffer
@@ -21,13 +21,41 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     private lateinit var audioTrack: AudioTrack
     private var currentPts = 0L
     private var cnt = 0
+
+
+    private var lastDecodedBuffer: ByteBuffer? = null
+    private var lastBufferInfo: MediaCodec.BufferInfo? = null
+    private var hasNewData = false // 标记是否有新数据
+
     override fun render(buffer: ByteBuffer?, bufferInfo: MediaCodec.BufferInfo) {
         if (buffer != null) {
-            audioTrack.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
-            currentPts = bufferInfo.presentationTimeUs
-            cnt++
-            VLog.v("audio pts:${usToS(bufferInfo.presentationTimeUs)}s size:${bufferInfo.size} offset: ${bufferInfo.offset} cnt: $cnt")
+            if (isExportMode()) {
+                exportFrame(buffer, bufferInfo)
+            } else {
+                playFrame(buffer, bufferInfo)
+            }
         }
+    }
+
+    private fun playFrame(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
+        audioTrack.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
+        currentPts = bufferInfo.presentationTimeUs
+        cnt++
+        VLog.v("audio pts:${usToS(bufferInfo.presentationTimeUs)}s size:${bufferInfo.size} offset: ${bufferInfo.offset} cnt: $cnt")
+    }
+
+    private fun exportFrame(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
+        // 不播放音频，而是保存PCM数据
+        lastDecodedBuffer = ByteBuffer.allocate(buffer.remaining()).apply {
+            put(buffer)
+            flip()
+        }
+        lastBufferInfo = MediaCodec.BufferInfo().apply {
+            set(bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
+        }
+        hasNewData = true // 新数据已到达
+
+        currentPts = bufferInfo.presentationTimeUs
     }
 
     override fun configure(codec: MediaCodec) {
@@ -35,10 +63,14 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     }
 
     override fun onPrepare() {
-        initRender()
+        if (isExportMode()) {
+
+        } else {
+            initAudioPlayer()
+        }
     }
 
-    private fun initRender() {
+    private fun initAudioPlayer() {
         val format = extractor.getMediaFormat()
         val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -99,4 +131,33 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     }
 
     override fun decodeType(): IDecoder.DecodeType = IDecoder.DecodeType.Audio
+
+    /**
+     * 获取最后解码的PCM数据
+     */
+    fun getLastDecodedData(): ByteBuffer? {
+        return if (hasNewData) {
+            lastDecodedBuffer?.let { buffer ->
+                // 创建一个新的ByteBuffer副本，避免数据被重复使用
+                val copy = ByteBuffer.allocate(buffer.remaining())
+                copy.put(buffer)
+                copy.flip()
+
+                // 重置原buffer的位置以便下次读取
+                buffer.rewind()
+
+                hasNewData = false // 数据已消费
+                copy
+            }
+        } else {
+            null
+        }
+    }
+
+    /**
+     * 获取最后的缓冲区信息
+     */
+    fun getLastBufferInfo(): MediaCodec.BufferInfo? {
+        return lastBufferInfo
+    }
 }

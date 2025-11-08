@@ -8,10 +8,10 @@ import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import com.vompom.media.IPlayer
 import com.vompom.media.VMPlayer
-import com.vompom.media.docode.model.ClipAsset
-import com.vompom.media.docode.model.TimeRange
-import com.vompom.media.export.EncodeManager.ExportConfig
-import com.vompom.media.export.EncodeManager.ExportListener
+import com.vompom.media.export.ExportManager.ExportConfig
+import com.vompom.media.export.ExportManager.ExportListener
+import com.vompom.media.model.ClipAsset
+import com.vompom.media.model.TimeRange
 import com.vompom.media.utils.usToS
 import com.vompom.vmplayer.databinding.ActivityMediaBinding
 import java.io.File
@@ -81,12 +81,10 @@ class PlayerDemoActivity : AppCompatActivity() {
         player.setRenderSize(Size(1280, 720))
         player.setPlayList(
             listOf(
-                ClipAsset(ResUtils.testHok, TimeRange.create(0f, 2f)),
-//                ClipAsset(ResUtils.testHok, TimeRange.create(2f, 2f)),
-//                ClipAsset(ResUtils.testHok, TimeRange.create(0f, 2f)),
-//                ClipAsset(ResUtils.testHokV, TimeRange.create(3f, 2f)),
-//                ClipAsset(ResUtils.video10s, TimeRange.Companion.create(2f, 2f)),
-//                ClipAsset(ResUtils.testWz, TimeRange.create(2f, 3f)),
+                ClipAsset(ResUtils.testHok, TimeRange.create(2f, 3f)),
+                ClipAsset(ResUtils.testHokV, TimeRange.create(3f, 2f)),
+                ClipAsset(ResUtils.video10s, TimeRange.Companion.create(2f, 2f)),
+                ClipAsset(ResUtils.testWz, TimeRange.create(2f, 3f)),
             ),
         )
         player.setPlayerListener(object : IPlayer.PlayerListener {

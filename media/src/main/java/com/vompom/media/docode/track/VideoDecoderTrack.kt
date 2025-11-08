@@ -5,7 +5,7 @@ import android.view.Surface
 import com.vompom.media.docode.decorder.BaseDecoder
 import com.vompom.media.docode.decorder.IDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.TrackSegment
 
 /**
  *
@@ -17,7 +17,6 @@ import com.vompom.media.docode.model.TrackSegment
 class VideoDecoderTrack() : BaseDecoderTrack() {
     private lateinit var outputSurface: Surface
     private var videoSizeChangeListener: ((Size) -> Unit)? = null
-    private var exportMode = false
 
     constructor(segmentList: List<TrackSegment>, outputSurface: Surface, exportMode: Boolean = false) : this() {
         this.outputSurface = outputSurface

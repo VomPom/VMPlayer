@@ -1,6 +1,6 @@
 package com.vompom.media.export.reader
 
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.TrackSegment
 
 /**
  *
@@ -26,14 +26,24 @@ abstract class BaseReader(val segments: List<TrackSegment>) : IReader {
     fun durationUs(): Long {
         if (totalDurationUs < 0) {
             totalDurationUs = segments.sumOf { it.timelineRange.durationUs }
-
         }
         return totalDurationUs
     }
 
     override fun stop() {
-        isStop = false
+        isStop = true
+    }
+
+    override fun start() {
+        Thread {
+            prepare()
+            onStart()
+        }.start()
     }
 
     override fun isRunning(): Boolean = !isStop
+
+    abstract fun prepare()
+
+    abstract fun onStart()
 }

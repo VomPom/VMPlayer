@@ -1,8 +1,10 @@
 package com.vompom.media.docode.track
 
+import android.media.MediaCodec
 import com.vompom.media.docode.decorder.AudioDecoder
 import com.vompom.media.docode.decorder.IDecoder
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.TrackSegment
+import java.nio.ByteBuffer
 
 /**
  *
@@ -12,7 +14,8 @@ import com.vompom.media.docode.model.TrackSegment
  */
 
 class AudioDecoderTrack() : BaseDecoderTrack() {
-    constructor(segmentList: List<TrackSegment>) : this() {
+    constructor(segmentList: List<TrackSegment>, exportMode: Boolean = false) : this() {
+        this.exportMode = exportMode
         setTrackSegments(segmentList)
         decodeType = IDecoder.DecodeType.Audio
     }
@@ -29,7 +32,13 @@ class AudioDecoderTrack() : BaseDecoderTrack() {
     override fun createDecoder(segment: TrackSegment): IDecoder {
         val decoder = AudioDecoder(segment.asset)
         decoder.start()
+        decoder.setExportMode(exportMode)
         return decoder
     }
 
+    fun getLastDecodedData(): Pair<ByteBuffer?, MediaCodec.BufferInfo?> {
+        val buffer = (currentDecoder as? AudioDecoder)?.getLastDecodedData()
+        val bufferInfo = (currentDecoder as? AudioDecoder)?.getLastBufferInfo()
+        return Pair(buffer, bufferInfo)
+    }
 }

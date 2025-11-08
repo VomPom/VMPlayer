@@ -1,7 +1,7 @@
 package com.vompom.media.docode.track
 
-import com.vompom.media.docode.model.SampleState
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.SampleState
+import com.vompom.media.model.TrackSegment
 
 /**
  *

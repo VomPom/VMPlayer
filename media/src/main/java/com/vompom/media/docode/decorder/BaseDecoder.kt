@@ -2,8 +2,8 @@ package com.vompom.media.docode.decorder
 
 import android.media.MediaCodec
 import android.media.MediaFormat
-import com.vompom.media.docode.model.Asset
-import com.vompom.media.docode.model.SampleState
+import com.vompom.media.model.Asset
+import com.vompom.media.model.SampleState
 import com.vompom.media.extractor.AssetExtractor
 import com.vompom.media.utils.VLog
 import java.io.File
@@ -220,6 +220,8 @@ abstract class BaseDecoder : IDecoder {
     fun setExportMode(exportMode: Boolean) {
         isExportMode = exportMode
     }
+
+    fun isExportMode(): Boolean = isExportMode
 
 
     override fun release() {

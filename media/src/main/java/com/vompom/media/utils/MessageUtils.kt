@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Message
 import android.os.MessageQueue
-import com.vompom.media.docode.model.PlayerMessage
+import com.vompom.media.model.PlayerMessage
 
 /**
  *

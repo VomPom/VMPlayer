@@ -2,13 +2,13 @@ package com.vompom.media.export
 
 import android.media.MediaCodec
 import android.util.Size
-import com.vompom.media.docode.model.TrackSegment
+import com.vompom.media.model.TrackSegment
+import com.vompom.media.export.encoder.AudioEncoder
+import com.vompom.media.export.encoder.IEncoder
+import com.vompom.media.export.encoder.VideoEncoder
 import com.vompom.media.export.reader.AudioReader
 import com.vompom.media.export.reader.IReader
 import com.vompom.media.export.reader.VideoReader
-import com.vompom.media.export.writer.AudioEncoder
-import com.vompom.media.export.writer.IEncoder
-import com.vompom.media.export.writer.VideoEncoder
 import com.vompom.media.utils.VLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,7 @@ import java.nio.ByteBuffer
  * todo:: 使用子线程去处理整个流程
  */
 
-class EncodeManager() {
+class ExportManager() {
     private val exportScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var exportListener: ExportListener? = null
 
@@ -47,8 +47,14 @@ class EncodeManager() {
     private var audioEncodeTime: Long = 0L
     private var videoEncodeTime: Long = 0L
     private var totalVideoAudioTime: Long = -1L
+
     private var videoFinished = false
+    private var videoTrackAdd = false
+
     private var audioFinished = false
+    private var audioTrackAdd = false
+    private var muxerStart = false
+    private var muxerLock = Object()
 
     // 配置数据
     private var segments: List<TrackSegment> = emptyList()
@@ -122,15 +128,13 @@ class EncodeManager() {
 
     private fun initDecoders() {
         val surface = (videoEncoder as VideoEncoder).getEncoderSurface()
-        videoReader = VideoReader(segments, surface, config.frameRate).apply {
-            prepare()
-        }
-        audioReader = AudioReader(segments).apply {
-            prepare()
-        }
+        videoReader = VideoReader(segments, surface, config.frameRate)
+        audioReader = AudioReader(segments)
     }
 
     private suspend fun startTask() = withContext(Dispatchers.IO) {
+        // 视频数据流
+        // VideoReader → Surface → VideoEncoder → BaseEncoder.listen() → writeSampleData()
         videoReader?.let {
             it.listen(
                 onBufferRead = { bufferTime ->
@@ -138,8 +142,8 @@ class EncodeManager() {
                     videoEncoder?.listen(
                         onFormatChange = {
                             (mediaMuxer?.addTrack(it) ?: -1).apply {
-                                // 有视频轨道了就可以启动 muxer
-                                mediaMuxer?.start()
+                                videoTrackAdd = true
+                                tryStartMuxer()
                             }
                         },
                         onBufferEncode = { trackIndex, buffer, bufferInfo ->
@@ -151,22 +155,30 @@ class EncodeManager() {
                 onFinished = {
                     videoEncoder?.finishEncoding()
                     videoFinished = true
-                    stopMuxer()
+                    tryStopMuxer()
                 }
             )
             it.start()
         }
 
-        // todo 音频
+        // 音频数据流
+        // AudioReader → setOnAudioDataAvailable → AudioEncoder.encodeAudioData() → BaseEncoder.listen() → writeSampleData()
         audioReader?.let {
+            // 设置音频数据处理回调
+            (it as AudioReader).setOnAudioDataAvailable { audioData, presentationTimeUs ->
+                (audioEncoder as? AudioEncoder)?.encodeAudioData(audioData, presentationTimeUs)
+            }
+
             it.listen(
                 onBufferRead = { bufferTime ->
                     audioEncodeTime = bufferTime
+                    // 音频编码在setOnAudioDataAvailable回调中已经处理
+                    // 这里只需要处理格式变化和输出drain
                     audioEncoder?.listen(
                         onFormatChange = {
                             (mediaMuxer?.addTrack(it) ?: -1).apply {
-                                // 有视频轨道了就可以启动 muxer
-//                                mediaMuxer?.start()
+                                audioTrackAdd = true
+                                tryStartMuxer()
                             }
                         },
                         onBufferEncode = { trackIndex, buffer, bufferInfo ->
@@ -178,20 +190,42 @@ class EncodeManager() {
                 onFinished = {
                     audioEncoder?.finishEncoding()
                     audioFinished = true
-                    stopMuxer()
+                    tryStopMuxer()
                 }
             )
             it.start()
         }
     }
 
-    private fun stopMuxer() {
+    private fun tryStartMuxer() {
+        synchronized(muxerLock) {
+            if (videoTrackAdd && audioTrackAdd) {
+                mediaMuxer?.start()
+                muxerStart = true
+                muxerLock.notify()
+            }
+        }
+    }
+
+    private fun tryStopMuxer() {
         if (videoFinished && audioFinished) {
             mediaMuxer?.stop()
         }
     }
 
     private fun writeSampleData(trackIndex: Int, byteBuf: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
+        // 必须等待 Muxer 开始之后才能写入数据
+        if (!muxerStart) {
+            synchronized(muxerLock) {
+                if (!muxerStart) {
+                    try {
+                        muxerLock.wait()
+                    } catch (e: InterruptedException) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
         if (trackIndex >= 0) {
             mediaMuxer?.writeSampleData(trackIndex, byteBuf, bufferInfo)
         } else {

@@ -10,13 +10,13 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.vompom.media.docode.decorder.AudioDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
-import com.vompom.media.docode.model.ClipAsset
-import com.vompom.media.docode.model.TrackSegment
 import com.vompom.media.docode.track.AudioDecoderTrack
 import com.vompom.media.docode.track.VideoDecoderTrack
-import com.vompom.media.export.EncodeManager
-import com.vompom.media.export.EncodeManager.ExportConfig
-import com.vompom.media.export.EncodeManager.ExportListener
+import com.vompom.media.export.ExportManager
+import com.vompom.media.export.ExportManager.ExportConfig
+import com.vompom.media.export.ExportManager.ExportListener
+import com.vompom.media.model.ClipAsset
+import com.vompom.media.model.TrackSegment
 import com.vompom.media.player.PlayerThread
 import com.vompom.media.render.VideoRenderView
 import java.io.File
@@ -42,7 +42,7 @@ class VMPlayer : IPlayer, Handler.Callback {
     private var videoRenderView: VideoRenderView? = null
 
     // 导出相关
-    private val exportManager = EncodeManager()
+    private val exportManager = ExportManager()
     private var exportListener: ExportListener? = null
 
 

@@ -1,4 +1,4 @@
-package com.vompom.media.docode.model
+package com.vompom.media.model
 
 import android.media.MediaFormat
 import com.vompom.media.extractor.AssetExtractor

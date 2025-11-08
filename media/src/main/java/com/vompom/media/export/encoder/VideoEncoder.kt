@@ -1,10 +1,10 @@
-package com.vompom.media.export.writer
+package com.vompom.media.export.encoder
 
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.view.Surface
-import com.vompom.media.export.EncodeManager.ExportConfig
+import com.vompom.media.export.ExportManager.ExportConfig
 import com.vompom.media.utils.VLog
 
 /**

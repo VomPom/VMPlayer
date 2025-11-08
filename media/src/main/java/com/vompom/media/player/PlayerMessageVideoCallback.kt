@@ -3,8 +3,8 @@ package com.vompom.media.player
 import android.os.Handler
 import android.os.Message
 import com.vompom.media.VMPlayer
-import com.vompom.media.docode.model.PlayerMessage
 import com.vompom.media.docode.track.IDecoderTrack
+import com.vompom.media.model.PlayerMessage
 import com.vompom.media.utils.MessageUtils
 
 /**
