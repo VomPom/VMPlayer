@@ -1,10 +1,8 @@
 package com.vompom.media
 
 import android.util.Size
-import com.vompom.media.export.ExportManager.ExportConfig
-import com.vompom.media.export.ExportManager.ExportListener
+import com.vompom.media.export.IExporter
 import com.vompom.media.model.ClipAsset
-import java.io.File
 
 /**
  *
@@ -19,12 +17,12 @@ interface IPlayer {
     fun pause()
     fun seekTo(positionUs: Long)
     fun stop()
-    fun export(outputFile: File?, config: ExportConfig? = null, listener: ExportListener?)
     fun release()
     fun duration(): Long
     fun setLoop(loop: Boolean)
     fun setRenderSize(size: Size)
     fun setPlayerListener(listener: PlayerListener)
+    fun createExporter(): IExporter
     interface PlayerListener {
 
         fun onPositionChanged(currentDurationUs: Long, playerDurationUs: Long)

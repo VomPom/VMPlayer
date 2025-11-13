@@ -24,7 +24,7 @@ abstract class BaseEncoder : IEncoder {
     protected var onBufferEncodeCallback: OnBufferEncode? = null
     private var trackIndex = -1
     private var isEOSReceived = false
-
+    protected var encodePTS = 0L
 
     override fun prepare() {
         encoder = MediaCodec.createEncoderByType(encodeType()).apply {
@@ -97,6 +97,13 @@ abstract class BaseEncoder : IEncoder {
                     outputBuffer?.let { buffer ->
                         if (bufferInfo.size > 0 && trackIndex != -1) {
                             try {
+                                bufferInfo.presentationTimeUs = encodePTS
+                                encodePTS += when (encodeType()) {
+                                    VIDEO_MIME_TYPE -> 33_000
+                                    AUDIO_MIME_TYPE -> 23_220
+                                    else -> 0
+                                }
+
                                 onBufferEncode(trackIndex, buffer, bufferInfo)
                             } catch (e: Exception) {
                                 VLog.e(TAG, "Error encoding buffer", e)

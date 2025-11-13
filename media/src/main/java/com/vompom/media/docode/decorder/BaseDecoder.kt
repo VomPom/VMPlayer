@@ -2,9 +2,9 @@ package com.vompom.media.docode.decorder
 
 import android.media.MediaCodec
 import android.media.MediaFormat
+import com.vompom.media.extractor.AssetExtractor
 import com.vompom.media.model.Asset
 import com.vompom.media.model.SampleState
-import com.vompom.media.extractor.AssetExtractor
 import com.vompom.media.utils.VLog
 import java.io.File
 import java.nio.ByteBuffer
@@ -30,10 +30,10 @@ import java.nio.ByteBuffer
 abstract class BaseDecoder : IDecoder {
     companion object {
         const val TIME_US: Int = 10000
-
-        //todo:: 想办法干掉这个逻辑
-        var exportPTS = 0L
     }
+
+    //todo:: 多个片段连续的时候
+    private var exportPTS = 0L
 
     // 添加导出模式标志
     private var isExportMode = false
@@ -131,7 +131,7 @@ abstract class BaseDecoder : IDecoder {
                 // 播放因为使用的 TextureView/SurfaceView 创建的 Surface 则不受影响
 
                 // presentationTimeUs 的主要作用是为解码后的帧排序，并告知编码器该帧在原始时间轴上的位置。
-                val presentationTimeUs = if (isExportMode && this is VideoDecoder) {
+                val presentationTimeUs = if (isExportMode) {
                     exportPTS
                 } else {
                     extractor.getSampleTime()
@@ -145,7 +145,11 @@ abstract class BaseDecoder : IDecoder {
                 )
                 // 导出模式只需要 queueInputBuffer 一直保持增长就行
                 if (isExportMode) {
-                    exportPTS += 33_000 //33ms
+                    // todo:: optimize time add...
+                    exportPTS += when (decodeType()) {
+                        IDecoder.DecodeType.Video -> 33_000
+                        IDecoder.DecodeType.Audio -> 23_220
+                    }
                 }
             } else {
                 // 结束,传递 end-of-stream 标志
@@ -188,7 +192,8 @@ abstract class BaseDecoder : IDecoder {
                 outputBuffer = mediaCodec.getOutputBuffer(outputIndex)
                 bufferTime = bufferInfo.presentationTimeUs
                 render(outputBuffer, bufferInfo)
-                mediaCodec.releaseOutputBuffer(outputIndex, renderCheck(bufferTime))
+                val needRender = renderCheck(bufferTime)
+                mediaCodec.releaseOutputBuffer(outputIndex, needRender)
             } else {
                 when (outputIndex) {
                     MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {}

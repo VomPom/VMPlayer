@@ -1,6 +1,5 @@
 package com.vompom.media
 
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -12,14 +11,12 @@ import com.vompom.media.docode.decorder.AudioDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
 import com.vompom.media.docode.track.AudioDecoderTrack
 import com.vompom.media.docode.track.VideoDecoderTrack
-import com.vompom.media.export.ExportManager
-import com.vompom.media.export.ExportManager.ExportConfig
-import com.vompom.media.export.ExportManager.ExportListener
+import com.vompom.media.export.Exporter
+import com.vompom.media.export.IExporter
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
 import com.vompom.media.player.PlayerThread
 import com.vompom.media.render.VideoRenderView
-import java.io.File
 
 /**
  *
@@ -37,19 +34,16 @@ class VMPlayer : IPlayer, Handler.Callback {
     var mMainHandler: Handler = Handler(Looper.getMainLooper(), this)
 
     private var loop = true
-    private var renderSize = Size(1280, 720)  // 固定渲染尺寸
+    private var renderSize = Size(DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT)
     private var playUs: Long = 0L
     private var videoRenderView: VideoRenderView? = null
-
-    // 导出相关
-    private val exportManager = ExportManager()
-    private var exportListener: ExportListener? = null
-
 
     companion object {
         const val TYPE_STATES: Int = 1
         const val TYPE_PROGRESS: Int = 2
         const val TYPE_VIEWPORT_UPDATE: Int = 3
+        const val DEFAULT_RENDER_WIDTH = 1280
+        const val DEFAULT_RENDER_HEIGHT = 720
 
         fun create(frameLayout: FrameLayout): VMPlayer {
             return VMPlayer(frameLayout)
@@ -128,86 +122,9 @@ class VMPlayer : IPlayer, Handler.Callback {
         playerThread?.sendMessage(PlayerThread.Companion.ACTION_STOP)
     }
 
-    /**
-     * 导出视频到指定文件
-     *
-     * @param outputFile 输出文件，为null时使用默认文件名
-     * @param config 导出配置，为null时使用默认配置
-     */
-    override fun export(outputFile: File?, config: ExportConfig?, listener: ExportListener?) {
-        this.exportListener = listener
-        if (segments.isEmpty()) {
-            exportListener?.onExportError(IllegalStateException("No segments to export"))
-            return
-        }
-
-        // 使用默认输出文件
-        val finalOutputFile = outputFile ?: getDefaultExportFile()
-
-        // 使用默认配置或自定义配置
-        val finalConfig = config ?: ExportConfig(
-            outputFile = finalOutputFile,
-            outputSize = renderSize,
-            videoBitRate = exportManager.getRecommendedBitRate(renderSize)
-        )
-
-        // 开始导出
-        exportManager.startExport(
-            segments = segments,
-            config = finalConfig,
-            listener = object : ExportListener {
-                override fun onExportStart() {
-                    mMainHandler.post {
-                        exportListener?.onExportStart()
-                    }
-                }
-
-                override fun onExportProgress(progress: Float) {
-                    mMainHandler.post {
-                        exportListener?.onExportProgress(progress)
-                    }
-                }
-
-                override fun onExportComplete(outputFile: File) {
-                    mMainHandler.post {
-                        exportListener?.onExportComplete(outputFile)
-                    }
-                }
-
-                override fun onExportError(error: Exception) {
-                    mMainHandler.post {
-                        exportListener?.onExportError(error)
-                    }
-                }
-            }
-        )
-    }
-
-    /**
-     * 停止导出
-     */
-    fun stopExport() {
-        exportManager.stopExport()
-    }
-
-
-    /**
-     * 获取默认导出文件
-     */
-    private fun getDefaultExportFile(): File {
-        // 获取应用的外部存储目录
-        val fileName = exportManager.getRecommendedFileName()
-        return File(
-            Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-            ), fileName
-        )
-    }
-
     override fun release() {
         playerThread?.release()
         videoRenderView?.releaseResources()
-        exportManager.release()
     }
 
     override fun duration(): Long {
@@ -231,6 +148,8 @@ class VMPlayer : IPlayer, Handler.Callback {
     override fun setPlayerListener(listener: IPlayer.PlayerListener) {
         this.playListener = listener
     }
+
+    override fun createExporter(): IExporter = Exporter(segments)
 
     override fun handleMessage(msg: Message): Boolean {
         when (msg.what) {

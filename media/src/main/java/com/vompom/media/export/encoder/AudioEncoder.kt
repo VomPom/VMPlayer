@@ -3,7 +3,7 @@ package com.vompom.media.export.encoder
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import com.vompom.media.export.ExportManager.ExportConfig
+import com.vompom.media.export.Exporter.ExportConfig
 import com.vompom.media.utils.VLog
 
 /**

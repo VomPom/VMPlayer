@@ -2,7 +2,6 @@ package com.vompom.media.docode.track
 
 import android.util.Size
 import android.view.Surface
-import com.vompom.media.docode.decorder.BaseDecoder
 import com.vompom.media.docode.decorder.IDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
 import com.vompom.media.model.TrackSegment
@@ -23,7 +22,6 @@ class VideoDecoderTrack() : BaseDecoderTrack() {
         this.exportMode = exportMode
         setTrackSegments(segmentList)
         decodeType = IDecoder.DecodeType.Video
-        BaseDecoder.exportPTS = 0
     }
 
     /**

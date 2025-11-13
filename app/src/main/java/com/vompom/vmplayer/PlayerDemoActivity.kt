@@ -8,8 +8,8 @@ import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import com.vompom.media.IPlayer
 import com.vompom.media.VMPlayer
-import com.vompom.media.export.ExportManager.ExportConfig
-import com.vompom.media.export.ExportManager.ExportListener
+import com.vompom.media.export.Exporter.ExportConfig
+import com.vompom.media.export.Exporter.ExportListener
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TimeRange
 import com.vompom.media.utils.usToS
@@ -120,8 +120,9 @@ class PlayerDemoActivity : AppCompatActivity() {
             frameRate = 30
         )
         player.pause()
+
         // 开始导出
-        player.export(outputFile, config, object : ExportListener {
+        player.createExporter().export(outputFile, config, object : ExportListener {
             override fun onExportStart() {
 
             }

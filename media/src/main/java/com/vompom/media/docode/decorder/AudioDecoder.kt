@@ -38,6 +38,8 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     }
 
     private fun playFrame(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
+        lastDecodedBuffer = buffer
+        lastBufferInfo = bufferInfo
         audioTrack.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
         currentPts = bufferInfo.presentationTimeUs
         cnt++
@@ -105,6 +107,9 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
         if (isReleased) {
             return SampleState()
         }
+        if (isNeedSeek(targetTimeUs)) {
+            seek(targetTimeUs)
+        }
         // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
         if (!readSampleDone) {
             doReadSample()
@@ -131,6 +136,15 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     }
 
     override fun decodeType(): IDecoder.DecodeType = IDecoder.DecodeType.Audio
+
+    /**
+     * 判断是否需要 seek 一次，视频是不停地轮询直到获取到目标时间，音频只需要 seek 一次即可
+     *
+     * @return
+     */
+    private fun isNeedSeek(targetUs: Long): Boolean {
+        return lastBufferInfo == null && targetUs > 0
+    }
 
     /**
      * 获取最后解码的PCM数据

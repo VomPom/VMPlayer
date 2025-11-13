@@ -2,20 +2,21 @@ package com.vompom.media.export
 
 import android.media.MediaCodec
 import android.util.Size
-import com.vompom.media.model.TrackSegment
+import android.view.Surface
 import com.vompom.media.export.encoder.AudioEncoder
 import com.vompom.media.export.encoder.IEncoder
 import com.vompom.media.export.encoder.VideoEncoder
 import com.vompom.media.export.reader.AudioReader
 import com.vompom.media.export.reader.IReader
 import com.vompom.media.export.reader.VideoReader
+import com.vompom.media.model.TrackSegment
+import com.vompom.media.utils.ThreadUtils
 import com.vompom.media.utils.VLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -25,11 +26,12 @@ import java.nio.ByteBuffer
  *
  * @Description 负责协调视频和音频写入 mp4 文件
  * todo:: 使用子线程去处理整个流程
+ * todo:: 使用一个 session 记录渲染的数据
  */
 
-class ExportManager() {
+class Exporter(val segments: List<TrackSegment>) : IExporter {
     private val exportScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var exportListener: ExportListener? = null
+    private var listener: ExportListener? = null
 
     // 合成器
     private var mediaMuxer: IMediaMuxer? = null
@@ -53,56 +55,59 @@ class ExportManager() {
 
     private var audioFinished = false
     private var audioTrackAdd = false
+
     private var muxerStart = false
     private var muxerLock = Object()
 
-    // 配置数据
-    private var segments: List<TrackSegment> = emptyList()
     private lateinit var config: ExportConfig
 
-    data class ExportConfig(
-        val outputFile: File,
-        val outputSize: Size = Size(1280, 720),
-        val videoBitRate: Int = 2000000, // 2Mbps
-        val audioSampleRate: Int = 44100,
-        val audioBitRate: Int = 128000, // 128kbps
-        val frameRate: Int = 30
-    )
 
-    /**
-     * 导出监听器
-     */
-    interface ExportListener {
-        fun onExportStart()
-        fun onExportProgress(progress: Float)
-        fun onExportComplete(outputFile: File)
-        fun onExportError(error: Exception)
+    override fun export(outputFile: File?, config: ExportConfig, listener: ExportListener?) {
+        if (segments.isEmpty()) {
+            listener?.onExportError(IllegalStateException("No segments to export"))
+            return
+        }
+        this.config = config
+        this.listener = object : ExportListener {
+            override fun onExportStart() {
+                runOnUiThread {
+                    listener?.onExportStart()
+                }
+            }
+
+            override fun onExportProgress(progress: Float) {
+                runOnUiThread {
+                    listener?.onExportProgress(progress)
+                }
+            }
+
+            override fun onExportComplete(outputFile: File) {
+                runOnUiThread {
+                    listener?.onExportComplete(outputFile)
+                }
+            }
+
+            override fun onExportError(error: Exception) {
+                runOnUiThread {
+                    listener?.onExportError(error)
+                }
+            }
+        }
+        startExport()
     }
 
-    /**
-     * 设置导出监听器
-     */
-    fun setExportListener(listener: ExportListener?) {
-        this.exportListener = listener
-    }
+    private fun runOnUiThread(block: () -> Unit) = ThreadUtils.runInMainThread { block() }
 
     /**
      * 开始导出
      */
-    fun startExport(
-        segments: List<TrackSegment>,
-        config: ExportConfig,
-        listener: ExportListener
-    ) {
-        this.segments = segments
-        this.config = config
-
-        setExportListener(listener)
-        initMediaMuxer()
+    private fun startExport() {
         initEncoders()
         initDecoders()
+        initMediaMuxer()
         exportScope.launch {
-            startTask()
+            readAndWrite(videoReader, videoEncoder, true)
+            readAndWrite(audioReader, audioEncoder, false)
         }
     }
 
@@ -111,19 +116,21 @@ class ExportManager() {
         mediaMuxer = DefaultMediaMuxer(config.outputFile.absolutePath)
     }
 
-    private fun initEncoders() {
-        videoEncoder = VideoEncoder(config).apply {
+    private fun initEncoders(): Surface {
+        AudioEncoder(config).apply {
             prepare()
             setBufferEncodeCallback { trackIndex, buffer, bufferInfo ->
                 writeSampleData(trackIndex, buffer, bufferInfo)
             }
+            audioEncoder = this
         }
-        audioEncoder = AudioEncoder(config).apply {
+        return VideoEncoder(config).apply {
             prepare()
             setBufferEncodeCallback { trackIndex, buffer, bufferInfo ->
                 writeSampleData(trackIndex, buffer, bufferInfo)
             }
-        }
+            videoEncoder = this
+        }.getEncoderSurface()
     }
 
     private fun initDecoders() {
@@ -132,52 +139,36 @@ class ExportManager() {
         audioReader = AudioReader(segments)
     }
 
-    private suspend fun startTask() = withContext(Dispatchers.IO) {
-        // 视频数据流
-        // VideoReader → Surface → VideoEncoder → BaseEncoder.listen() → writeSampleData()
-        videoReader?.let {
-            it.listen(
-                onBufferRead = { bufferTime ->
-                    videoEncodeTime = bufferTime
-                    videoEncoder?.listen(
-                        onFormatChange = {
-                            (mediaMuxer?.addTrack(it) ?: -1).apply {
-                                videoTrackAdd = true
-                                tryStartMuxer()
-                            }
-                        },
-                        onBufferEncode = { trackIndex, buffer, bufferInfo ->
-                            writeSampleData(trackIndex, buffer, bufferInfo)
-                        })
 
-                    updateProgress()
-                },
-                onFinished = {
-                    videoEncoder?.finishEncoding()
-                    videoFinished = true
-                    tryStopMuxer()
-                }
-            )
-            it.start()
-        }
-
-        // 音频数据流
-        // AudioReader → setOnAudioDataAvailable → AudioEncoder.encodeAudioData() → BaseEncoder.listen() → writeSampleData()
-        audioReader?.let {
+    /**
+     * Read and write
+     *  视频数据流
+     *      VideoReader → Surface → VideoEncoder → BaseEncoder.listen() → writeSampleData()
+     *  音频数据流
+     *      AudioReader → setOnAudioDataAvailable → AudioEncoder.encodeAudioData() → BaseEncoder.listen() → writeSampleData()
+     *
+     * @param reader    音视频帧读取解码器
+     * @param encoder   音视频编码器
+     * @param isVideo   true 视频处理 false 音频处理
+     */
+    private fun readAndWrite(reader: IReader?, encoder: IEncoder?, isVideo: Boolean) {
+        reader?.let {
             // 设置音频数据处理回调
-            (it as AudioReader).setOnAudioDataAvailable { audioData, presentationTimeUs ->
-                (audioEncoder as? AudioEncoder)?.encodeAudioData(audioData, presentationTimeUs)
+            if (it is AudioReader) {
+                it.setOnAudioDataAvailable { audioData, presentationTimeUs ->
+                    (encoder as? AudioEncoder)?.encodeAudioData(audioData, presentationTimeUs)
+                }
             }
 
             it.listen(
                 onBufferRead = { bufferTime ->
-                    audioEncodeTime = bufferTime
-                    // 音频编码在setOnAudioDataAvailable回调中已经处理
-                    // 这里只需要处理格式变化和输出drain
-                    audioEncoder?.listen(
+                    if (isVideo) videoEncodeTime = bufferTime else audioEncodeTime = bufferTime
+                    // 音频编码在 setOnAudioDataAvailable 回调中已经处理
+                    // 这里只需要处理格式变化和输出 drain
+                    encoder?.listen(
                         onFormatChange = {
                             (mediaMuxer?.addTrack(it) ?: -1).apply {
-                                audioTrackAdd = true
+                                if (isVideo) videoTrackAdd = true else audioTrackAdd = true
                                 tryStartMuxer()
                             }
                         },
@@ -188,8 +179,8 @@ class ExportManager() {
                     updateProgress()
                 },
                 onFinished = {
-                    audioEncoder?.finishEncoding()
-                    audioFinished = true
+                    encoder?.finishEncoding()
+                    if (isVideo) videoFinished = true else audioFinished = true
                     tryStopMuxer()
                 }
             )
@@ -197,12 +188,17 @@ class ExportManager() {
         }
     }
 
+    /**
+     * 启动 Muxer 需要视频和音频轨道都添加成功才能启动，否则进行等待
+     *
+     */
     private fun tryStartMuxer() {
         synchronized(muxerLock) {
             if (videoTrackAdd && audioTrackAdd) {
                 mediaMuxer?.start()
                 muxerStart = true
                 muxerLock.notify()
+                listener?.onExportStart()
             }
         }
     }
@@ -210,6 +206,7 @@ class ExportManager() {
     private fun tryStopMuxer() {
         if (videoFinished && audioFinished) {
             mediaMuxer?.stop()
+            listener?.onExportComplete(config.outputFile)
         }
     }
 
@@ -238,7 +235,7 @@ class ExportManager() {
         if (progress > 1) {
             progress = 1f
         }
-        exportListener?.onExportProgress(progress)
+        listener?.onExportProgress(progress)
     }
 
     private fun durationUs(): Long {
@@ -249,29 +246,29 @@ class ExportManager() {
         return totalVideoAudioTime
     }
 
+    data class ExportConfig(
+        val outputFile: File,
+        val outputSize: Size = Size(1280, 720),
+        val videoBitRate: Int = 2000000, // 2Mbps
+        val audioSampleRate: Int = 44100,
+        val audioBitRate: Int = 128000, // 128kbps
+        val frameRate: Int = 30
+    )
+
     /**
-     * 根据输入片段推荐比特率
+     * 导出监听器
      */
-    fun getRecommendedBitRate(outputSize: Size): Int {
-        // 根据输出尺寸推荐合适的比特率
-        val pixels = outputSize.width * outputSize.height
-        return when {
-            pixels <= 640 * 480 -> 1000000      // 1Mbps for SD
-            pixels <= 1280 * 720 -> 2000000     // 2Mbps for HD
-            pixels <= 1920 * 1080 -> 5000000    // 5Mbps for FHD
-            else -> 8000000                      // 8Mbps for higher resolutions
-        }
+    interface ExportListener {
+        fun onExportStart()
+        fun onExportProgress(progress: Float)
+        fun onExportComplete(outputFile: File)
+        fun onExportError(error: Exception)
     }
 
     /**
-     * 获取推荐的输出文件名
+     * 停止导出
      */
-    fun getRecommendedFileName(): String {
-        val timestamp = System.currentTimeMillis()
-        return "export_$timestamp.mp4"
-    }
-
-    fun stopExport() {
+    override fun stopExport() {
         release()
     }
 
