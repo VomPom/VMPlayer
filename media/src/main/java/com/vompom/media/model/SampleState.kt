@@ -9,16 +9,26 @@ import com.vompom.media.docode.decorder.IDecoder
  * @Description
  */
 class SampleState {
+    var frameTimeUs: Long = 0
+    var statusCode = 0
+    var msg = ""
+
     constructor() : this(0)
 
-    constructor(frameTimeUs: Long, state: Int = IDecoder.SAMPLE_STATE_NORMAL) {
+    constructor(frameTimeUs: Long, status: Int = IDecoder.SAMPLE_STATE_NORMAL, msg: String = "") {
         this.frameTimeUs = frameTimeUs
-        this.stateCode = state
+        this.statusCode = status
+        this.msg = msg
     }
 
-    var frameTimeUs: Long = 0
-    var stateCode = 0
+    companion object {
+        fun byError(code: Int = IDecoder.SAMPLE_STATE_ERROR, msg: String = ""): SampleState {
+            return SampleState(-1, code, msg)
+        }
+    }
+
+
     override fun toString(): String {
-        return "[timeUs:$frameTimeUs, state:$stateCode]"
+        return "[timeUs:$frameTimeUs, state:$statusCode]"
     }
 }

@@ -32,11 +32,11 @@ abstract class BaseDecoder : IDecoder {
         const val TIME_US: Int = 10000
     }
 
-    //todo:: 多个片段连续的时候
-    private var exportPTS = 0L
-
     // 添加导出模式标志
     private var isExportMode = false
+
+    // 添加外部时间戳提供者
+    private var exportPTSProvider: (() -> Long)? = null
 
     private var sourcePath = ""
 
@@ -52,7 +52,7 @@ abstract class BaseDecoder : IDecoder {
 
     var isDecodeDone = false
     var isReleased = false
-    var readSampleDone = false
+    var isReadSampleDone = false
 
     constructor(asset: Asset) {
         this.sourcePath = asset.path
@@ -132,7 +132,7 @@ abstract class BaseDecoder : IDecoder {
 
                 // presentationTimeUs 的主要作用是为解码后的帧排序，并告知编码器该帧在原始时间轴上的位置。
                 val presentationTimeUs = if (isExportMode) {
-                    exportPTS
+                    exportPTSProvider?.invoke() ?: 0L
                 } else {
                     extractor.getSampleTime()
                 }
@@ -143,14 +143,7 @@ abstract class BaseDecoder : IDecoder {
                     presentationTimeUs,
                     extractor.getSampleFlags()
                 )
-                // 导出模式只需要 queueInputBuffer 一直保持增长就行
-                if (isExportMode) {
-                    // todo:: optimize time add...
-                    exportPTS += when (decodeType()) {
-                        IDecoder.DecodeType.Video -> 33_000
-                        IDecoder.DecodeType.Audio -> 23_220
-                    }
-                }
+                // 导出模式的时间推进由外部控制
             } else {
                 // 结束,传递 end-of-stream 标志
                 mediaCodec.queueInputBuffer(
@@ -161,7 +154,7 @@ abstract class BaseDecoder : IDecoder {
                     MediaCodec.BUFFER_FLAG_END_OF_STREAM
                 )
                 VLog.d("${this.javaClass.simpleName}->${File(this.sourcePath).name} has no more buffer.")
-                readSampleDone = true
+                isReadSampleDone = true
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -220,10 +213,14 @@ abstract class BaseDecoder : IDecoder {
     }
 
     /**
-     * 启用导出模式，帧时间戳将强制递增
+     * 启用导出模式，并设置外部时间戳提供者
+     *
+     * @param exportMode
+     * @param ptsProvider
      */
-    fun setExportMode(exportMode: Boolean) {
+    fun setExportMode(exportMode: Boolean, ptsProvider: (() -> Long)? = null) {
         isExportMode = exportMode
+        exportPTSProvider = ptsProvider
     }
 
     fun isExportMode(): Boolean = isExportMode
@@ -241,7 +238,7 @@ abstract class BaseDecoder : IDecoder {
     }
 
     private fun onLoop() {
-        readSampleDone = false
+        isReadSampleDone = false
         isDecodeDone = false
         // todo:: set video asset range start...
         seek(0)

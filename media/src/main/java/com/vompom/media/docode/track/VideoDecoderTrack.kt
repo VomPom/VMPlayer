@@ -31,20 +31,15 @@ class VideoDecoderTrack() : BaseDecoderTrack() {
         videoSizeChangeListener = listener
     }
 
-    /**
-     * 获取当前视频尺寸
-     */
-    fun getVideoSize(): Size {
-        return (currentDecoder as? VideoDecoder)?.getVideoSize() ?: Size(0, 0)
-    }
-
     override fun prepare() {
+        super.prepare()
         nextSegment()
     }
 
     override fun createDecoder(segment: TrackSegment): IDecoder {
         val decoder = VideoDecoder(segment.asset, outputSurface)
-        decoder.setExportMode(exportMode)
+        // 移除这里的setExportMode调用，由BaseDecoderTrack统一处理
+        // decoder.setExportMode(exportMode)
         decoder.start()
 
         // 设置视频尺寸变化监听，同时立即获取当前尺寸并通知
@@ -60,12 +55,4 @@ class VideoDecoderTrack() : BaseDecoderTrack() {
 
         return decoder
     }
-
-    /**
-     * 获取当前解码器的视频尺寸
-     */
-    private fun getCurrentVideoSize(): Size {
-        return (currentDecoder as? VideoDecoder)?.getVideoSize() ?: Size(0, 0)
-    }
-
 }

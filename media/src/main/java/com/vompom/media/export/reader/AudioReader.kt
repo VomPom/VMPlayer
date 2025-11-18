@@ -1,7 +1,7 @@
 package com.vompom.media.export.reader
 
-import com.vompom.media.model.TrackSegment
 import com.vompom.media.docode.track.AudioDecoderTrack
+import com.vompom.media.model.TrackSegment
 
 /**
  *
@@ -18,6 +18,7 @@ class AudioReader(segments: List<TrackSegment>) : BaseReader(segments) {
 
     override fun prepare() {
         audioDecoderTrack = AudioDecoderTrack(segments, true).apply {
+            setExportTimeInterval(sampleDurationUs)  // 设置精确的采样间隔
             prepare()
         }
     }

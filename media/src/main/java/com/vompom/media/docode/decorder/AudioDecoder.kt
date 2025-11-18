@@ -111,7 +111,7 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
             seek(targetTimeUs)
         }
         // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
-        if (!readSampleDone) {
+        if (!isReadSampleDone) {
             doReadSample()
         }
 

@@ -14,7 +14,10 @@ class TimeRange(var startUs: Long = 0L, var durationUs: Long = 0L) {
 
     companion object {
         fun create(startS: Float, durationS: Float): TimeRange {
-            return TimeRange(sToUs(startS).toLong(), sToUs(durationS).toLong())
+            val startUs = sToUs(startS).toLong()
+            val target = TimeRange(startUs, sToUs(durationS).toLong())
+            target.updateStartUs(startUs)
+            return target
         }
     }
 

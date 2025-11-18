@@ -1,5 +1,6 @@
 package com.vompom.media.docode.track
 
+import com.vompom.media.docode.decorder.BaseDecoder
 import com.vompom.media.docode.decorder.IDecoder
 import com.vompom.media.model.SampleState
 import com.vompom.media.model.TrackSegment
@@ -20,6 +21,9 @@ abstract class BaseDecoderTrack : IDecoderTrack {
     protected var currentPlayUs: Long = 0L
     protected var exportMode = false
 
+    private var globalExportPTS = 0L            // 添加全局导出时间戳管理
+    private var exportTimeIntervalUs = 0L       // 添加自定义时间间隔
+
     override fun setTrackSegments(segmentList: List<TrackSegment>) {
         this.segmentList.apply {
             clear()
@@ -27,9 +31,7 @@ abstract class BaseDecoderTrack : IDecoderTrack {
         }
     }
 
-    protected fun currentSegment(): TrackSegment {
-        return segmentList[currentSegmentIndex]
-    }
+    protected fun currentSegment(): TrackSegment = segmentList[currentSegmentIndex]
 
     protected fun releaseCurrentDecoder() {
         if (currentDecoder == null) {
@@ -58,7 +60,16 @@ abstract class BaseDecoderTrack : IDecoderTrack {
         val segment = currentSegment()
         synchronized(decoderLock) {
             currentDecoder = createDecoder(segment)
+
+            // 如果是导出模式，设置时间戳提供者
+            if (exportMode) {
+                (currentDecoder as? BaseDecoder)?.setExportMode(true) { getAndIncrementExportPTS() }
+            }
         }
+    }
+
+    override fun prepare() {
+        globalExportPTS = 0L
     }
 
     /**
@@ -91,10 +102,14 @@ abstract class BaseDecoderTrack : IDecoderTrack {
         val readSampleTimeUs = calSegmentSampleTime(playTimeUs)
         val state = currentDecoder!!.readSample(readSampleTimeUs)
         updateCurrentPlayUs(state.frameTimeUs)
-        if (state.stateCode == IDecoder.SAMPLE_STATE_FINISH) {
-            nextSegment()
-        }
         return state
+    }
+
+    /**
+     * 设置导出时间间隔（用于精确控制帧率）
+     */
+    fun setExportTimeInterval(intervalUs: Long) {
+        exportTimeIntervalUs = intervalUs
     }
 
     /**
@@ -153,11 +168,29 @@ abstract class BaseDecoderTrack : IDecoderTrack {
         currentPlayUs = sourcePlayedUs + segment.timelineRange.startUs
     }
 
-    abstract fun createDecoder(segment: TrackSegment): IDecoder
+    /**
+     * 获取并递增全局导出时间戳
+     */
+    private fun getAndIncrementExportPTS(): Long {
+        val currentPTS = globalExportPTS
+        // 如果设置了自定义间隔则使用，否则使用默认值
+        val interval = if (exportTimeIntervalUs > 0) {
+            exportTimeIntervalUs
+        } else {
+            when (decodeType) {
+                IDecoder.DecodeType.Video -> 33_000  // 视频：约30fps
+                IDecoder.DecodeType.Audio -> 23_220  // 音频：约44.1kHz采样率下的典型帧间隔
+            }
+        }
+        globalExportPTS += interval
+        return currentPTS
+    }
 
     override fun playedUs(): Long = currentPlayUs
 
     override fun release() {
         currentDecoder?.release()
     }
+
+    abstract fun createDecoder(segment: TrackSegment): IDecoder
 }

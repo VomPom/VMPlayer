@@ -18,7 +18,6 @@ import java.nio.ByteBuffer
 
 class VideoDecoder(val asset: Asset, val surface: Surface) : BaseDecoder(asset) {
     private var currentPlayPositionUs = 0L
-    private var cnt = 0
     private var videoSize: Size = Size(0, 0)
     private var videoSizeChangeListener: ((Size) -> Unit)? = null
 
@@ -35,9 +34,8 @@ class VideoDecoder(val asset: Asset, val surface: Surface) : BaseDecoder(asset) 
     fun getVideoSize(): Size = videoSize
 
     override fun render(buffer: ByteBuffer?, bufferInfo: MediaCodec.BufferInfo) {
-        cnt++
         currentPlayPositionUs = bufferInfo.presentationTimeUs
-        VLog.v("video pts:${usToS(bufferInfo.presentationTimeUs)}s size:${bufferInfo.size} offset: ${bufferInfo.offset} cnt: $cnt")
+        VLog.v("video pts:${usToS(bufferInfo.presentationTimeUs)}s size:${bufferInfo.size} offset: ${bufferInfo.offset}")
     }
 
 
@@ -49,27 +47,43 @@ class VideoDecoder(val asset: Asset, val surface: Surface) : BaseDecoder(asset) 
      * @return 解码状态
      */
     override fun readSample(targetTimeUs: Long): SampleState {
-        if (isReleased) return SampleState()
-        // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
-        var finishTask = false
+        if (isReleased) return SampleState.byError(msg = "Decoder is released")
         var sampleState = SampleState()
-        if (!readSampleDone) {
-            val dts = doReadSample()
-            VLog.v("video dts:${usToS(dts)}s")
-        }
 
-        // 从 MediaCodec 队列中获取解码后的数据
-        if (!isDecodeDone) {
-            sampleState = renderBuffer { decodeBufferTime ->
-                // 解码直到找到目标的时间戳
-                finishTask = decodeBufferTime >= targetTimeUs
-                finishTask
+        // 如果已经读取完成，直接返回完成状态
+        if (isReadSampleDone) return SampleState(0, IDecoder.SAMPLE_STATE_FINISH)
+
+        while (true) {
+            // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
+            if (!isReadSampleDone) {
+                val dts = doReadSample()
+                VLog.v("video dts:${usToS(dts)}s")
+            }
+
+            // 从 MediaCodec 队列中获取解码后的数据
+            if (!isDecodeDone) {
+                var finishTask = false
+                sampleState = renderBuffer { decodeBufferTime ->
+                    // 解码直到找到目标的时间戳
+                    finishTask = decodeBufferTime >= targetTimeUs
+                    finishTask
+                }
+
+                // 如果找到目标帧或解码完成，退出循环
+                if (finishTask || isDecodeDone) {
+                    break
+                }
+
+                // 如果读取完成但解码未完成，继续处理剩余帧
+                if (isReadSampleDone) {
+                    continue
+                }
+            } else {
+                // 解码已完成，退出循环
+                break
             }
         }
-        // seek 逻辑可能会触发这里，查找帧如果没有找到则一直循环查找
-        if (!finishTask && !isDecodeDone) {
-            sampleState = readSample(targetTimeUs)
-        }
+
         return sampleState
     }
 

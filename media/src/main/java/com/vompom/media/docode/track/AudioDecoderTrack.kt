@@ -21,6 +21,7 @@ class AudioDecoderTrack() : BaseDecoderTrack() {
     }
 
     override fun prepare() {
+        super.prepare()
         nextSegment()
     }
 
@@ -32,7 +33,8 @@ class AudioDecoderTrack() : BaseDecoderTrack() {
     override fun createDecoder(segment: TrackSegment): IDecoder {
         val decoder = AudioDecoder(segment.asset)
         decoder.start()
-        decoder.setExportMode(exportMode)
+        // 移除这里的setExportMode调用，由BaseDecoderTrack统一处理
+        // decoder.setExportMode(exportMode)
         return decoder
     }
 
