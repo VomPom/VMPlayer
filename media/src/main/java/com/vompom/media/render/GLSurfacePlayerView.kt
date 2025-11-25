@@ -11,10 +11,10 @@ import android.view.Surface
  *
  * 集成了VideoRenderProcessor，提供视频缩放适配和特效处理功能
  */
-class VideoRenderView @JvmOverloads constructor(
+class GLSurfacePlayerView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : GLSurfaceView(context, attrs) {
+) : GLSurfaceView(context, attrs), IPlayerView {
 
     private var playerRender: PlayerRenderer? = null
     private var renderSize = Size(0, 0)
@@ -45,7 +45,7 @@ class VideoRenderView @JvmOverloads constructor(
     /**
      * 设置目标渲染尺寸
      */
-    fun setTargetRenderSize(size: Size) {
+    override fun setRenderSize(size: Size) {
         if (renderSize != size) {
             renderSize = size
             // 通知渲染处理器更新参数
@@ -59,7 +59,7 @@ class VideoRenderView @JvmOverloads constructor(
     /**
      * 更新视频尺寸
      */
-    fun updateVideoSize(videoSize: Size) {
+    override fun updateVideoSize(videoSize: Size) {
         queueEvent {
             playerRender?.updateVideoSize(videoSize)
             requestRender()
@@ -79,7 +79,7 @@ class VideoRenderView @JvmOverloads constructor(
     /**
      * 设置Surface准备完成的回调
      */
-    fun setSurfaceReadyCallback(callback: (Surface) -> Unit) {
+    override fun setSurfaceReadyCallback(callback: (Surface) -> Unit) {
         surfaceReadyCallback = callback
         // 如果Surface已经准备好，立即回调
         playerRender?.getInputSurface()?.let { surface ->
@@ -90,7 +90,7 @@ class VideoRenderView @JvmOverloads constructor(
     /**
      * 释放资源
      */
-    fun releaseResources() {
+    override fun release() {
         queueEvent {
             playerRender?.release()
         }
@@ -99,6 +99,6 @@ class VideoRenderView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        releaseResources()
+        release()
     }
 }

@@ -1,10 +1,12 @@
 package com.vompom.media
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.util.Size
 import android.view.Surface
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.vompom.media.docode.decorder.AudioDecoder
@@ -16,7 +18,11 @@ import com.vompom.media.export.IExporter
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
 import com.vompom.media.player.PlayerThread
-import com.vompom.media.render.VideoRenderView
+import com.vompom.media.render.GLSurfacePlayerView
+import com.vompom.media.render.IPlayerView
+import com.vompom.media.render.PlayerRender
+import com.vompom.media.render.TexturePlayerView
+import com.vompom.media.render.effect.SimpleVideoEffectProcessor
 
 /**
  *
@@ -36,7 +42,9 @@ class VMPlayer : IPlayer, Handler.Callback {
     private var loop = true
     private var renderSize = Size(DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT)
     private var playUs: Long = 0L
-    private var videoRenderView: VideoRenderView? = null
+    private var playerView: IPlayerView? = null
+
+    private var useTextureView = true // 默认使用TextureView, false GLSurfaceView
 
     companion object {
         const val TYPE_STATES: Int = 1
@@ -55,23 +63,45 @@ class VMPlayer : IPlayer, Handler.Callback {
     }
 
     private fun initContentView(playerContainer: FrameLayout) {
-        videoRenderView = VideoRenderView(playerContainer.context).apply {
-            // 设置目标渲染尺寸
-            setTargetRenderSize(renderSize)
+        val playerView = createPlayerView(playerContainer.context)
+        playerContainer.addView(
+            playerView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
 
-            // 设置Surface准备完成的回调
+    private fun createPlayerView(context: Context): View {
+        return if (useTextureView) {
+            createTexturePlayerView(context)
+        } else {
+            createGLPlayerView(context)
+        }
+    }
+
+    private fun createGLPlayerView(context: Context): GLSurfacePlayerView {
+        return GLSurfacePlayerView(context).apply {
+            this.setRenderSize(renderSize)
             setSurfaceReadyCallback { surface ->
                 onSurfaceCreate(surface)
             }
 
-//            setEffectProcessor(SimpleVideoEffectProcessor())
+            setEffectProcessor(SimpleVideoEffectProcessor())
+        }
+    }
 
-            playerContainer.addView(
-                this, FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            )
+    private fun createTexturePlayerView(context: Context): TexturePlayerView {
+        val playerRender = PlayerRender().apply {
+            initRenderSize(renderSize)
+            setSurfaceReadyCallback { surface ->
+                onSurfaceCreate(surface)
+            }
+        }
+        return TexturePlayerView(context).apply {
+            setRenderSize(renderSize)
+            setRenderer(playerRender)
         }
     }
 
@@ -79,15 +109,11 @@ class VMPlayer : IPlayer, Handler.Callback {
         val videoTrack = VideoDecoderTrack(segments, surface)
         val audioTrack = AudioDecoderTrack(segments)
         videoTrack.setVideoSizeChangeListener { videoSize ->
-            videoRenderView?.updateVideoSize(videoSize)
+            playerView?.updateVideoSize(videoSize)
         }
-
-        playerThread = PlayerThread(
-            this,
-            videoTrack,
-            audioTrack
-        )
-        playerThread?.sendMessage(PlayerThread.Companion.ACTION_PREPARE)
+        playerThread = PlayerThread(this, videoTrack, audioTrack).apply {
+            sendMessage(PlayerThread.Companion.ACTION_PREPARE)
+        }
         play()
     }
 
@@ -124,7 +150,7 @@ class VMPlayer : IPlayer, Handler.Callback {
 
     override fun release() {
         playerThread?.release()
-        videoRenderView?.releaseResources()
+        playerView?.release()
     }
 
     override fun duration(): Long {
@@ -138,7 +164,7 @@ class VMPlayer : IPlayer, Handler.Callback {
 
     override fun setRenderSize(size: Size) {
         this.renderSize = size
-        videoRenderView?.setTargetRenderSize(size)
+        playerView?.setRenderSize(size)
     }
 
     override fun setLoop(loop: Boolean) {

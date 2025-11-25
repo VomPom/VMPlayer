@@ -95,11 +95,10 @@ class SimpleVideoEffectProcessor : VideoEffectProcessor {
     }
 
     override fun processFrame(textureId: Int, videoSize: Size) {
-        if (!isInitialized) {
-            initialize(videoSize)
-        }
-
         if (hasEffects()) {
+            if (!isInitialized) {
+                initialize(videoSize)
+            }
             applyEffects(textureId, videoSize)
         }
     }
