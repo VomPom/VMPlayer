@@ -1,7 +1,6 @@
 package com.vompom.media.render
 
 import android.util.Size
-import android.view.Surface
 
 /**
  *
@@ -11,7 +10,6 @@ import android.view.Surface
  */
 
 interface IPlayerView {
-    fun setSurfaceReadyCallback(callback: (Surface) -> Unit)
     fun setRenderSize(size: Size)
     fun updateVideoSize(size: Size)
     fun release()

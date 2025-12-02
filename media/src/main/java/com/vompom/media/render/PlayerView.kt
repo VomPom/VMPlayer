@@ -3,7 +3,6 @@ package com.vompom.media.render
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.util.Size
-import android.view.Surface
 import android.view.TextureView
 import java.lang.ref.WeakReference
 
@@ -14,14 +13,13 @@ import java.lang.ref.WeakReference
  * @Description 视频源 → SurfaceTexture → OpenGL纹理 → 滤镜处理 → 渲染到TextureView
  */
 
-class TexturePlayerView : TextureView, TextureView.SurfaceTextureListener, IPlayerView {
+class PlayerView : TextureView, TextureView.SurfaceTextureListener, IPlayerView {
     private var glThread: GLThread? = null
     private var renderSize = Size(0, 0)
 
     constructor(context: Context) : super(context) {
         init()
     }
-
 
     private fun init() {
         surfaceTextureListener = this
@@ -53,10 +51,6 @@ class TexturePlayerView : TextureView, TextureView.SurfaceTextureListener, IPlay
 
     }
 
-    override fun setSurfaceReadyCallback(callback: (Surface) -> Unit) {
-        // surfaceReadyCallback = callback
-    }
-
     override fun setRenderSize(size: Size) {
         this.renderSize = size
     }
@@ -79,7 +73,7 @@ class TexturePlayerView : TextureView, TextureView.SurfaceTextureListener, IPlay
 
     class GLThread(
         val renderer: PlayerRender,
-        val palerView: WeakReference<TexturePlayerView>,
+        val palerView: WeakReference<PlayerView>,
         val renderSize: Size
     ) : Thread("GLT-Render-Thread") {
         private lateinit var eglHelper: EglHelper
@@ -139,10 +133,6 @@ class TexturePlayerView : TextureView, TextureView.SurfaceTextureListener, IPlay
 
         fun surfaceChanged(texture: SurfaceTexture?, w: Int, h: Int) {
             renderer.onSurfaceChanged(w, h)
-        }
-
-        private fun readyToDraw(): Boolean {
-            return true
         }
     }
 }

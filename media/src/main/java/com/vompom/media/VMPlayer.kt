@@ -6,7 +6,6 @@ import android.os.Looper
 import android.os.Message
 import android.util.Size
 import android.view.Surface
-import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.vompom.media.docode.decorder.AudioDecoder
@@ -18,11 +17,12 @@ import com.vompom.media.export.IExporter
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
 import com.vompom.media.player.PlayerThread
-import com.vompom.media.render.GLSurfacePlayerView
 import com.vompom.media.render.IPlayerView
 import com.vompom.media.render.PlayerRender
-import com.vompom.media.render.TexturePlayerView
-import com.vompom.media.render.effect.SimpleVideoEffectProcessor
+import com.vompom.media.render.PlayerView
+import com.vompom.media.render.effect.EffectGroup
+import com.vompom.media.render.effect.InvertEffect
+import com.vompom.media.render.effect.RGBEffect
 
 /**
  *
@@ -44,8 +44,6 @@ class VMPlayer : IPlayer, Handler.Callback {
     private var playUs: Long = 0L
     private var playerView: IPlayerView? = null
 
-    private var useTextureView = true // 默认使用TextureView, false GLSurfaceView
-
     companion object {
         const val TYPE_STATES: Int = 1
         const val TYPE_PROGRESS: Int = 2
@@ -63,43 +61,31 @@ class VMPlayer : IPlayer, Handler.Callback {
     }
 
     private fun initContentView(playerContainer: FrameLayout) {
-        val playerView = createPlayerView(playerContainer.context)
+        val playerView = createTexturePlayerView(playerContainer.context)
         playerContainer.addView(
             playerView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
     }
 
-    private fun createPlayerView(context: Context): View {
-        return if (useTextureView) {
-            createTexturePlayerView(context)
-        } else {
-            createGLPlayerView(context)
-        }
-    }
-
-    private fun createGLPlayerView(context: Context): GLSurfacePlayerView {
-        return GLSurfacePlayerView(context).apply {
-            this.setRenderSize(renderSize)
-            setSurfaceReadyCallback { surface ->
-                onSurfaceCreate(surface)
-            }
-
-            setEffectProcessor(SimpleVideoEffectProcessor())
-        }
-    }
-
-    private fun createTexturePlayerView(context: Context): TexturePlayerView {
+    private fun createTexturePlayerView(context: Context): PlayerView {
         val playerRender = PlayerRender().apply {
             initRenderSize(renderSize)
             setSurfaceReadyCallback { surface ->
                 onSurfaceCreate(surface)
             }
+            // todo:: use play item...
+            setEffectGroup(EffectGroup(true).apply {
+                addEffect(RGBEffect().apply {
+                    setRGB(0.5f, 1.0f, 1.0f)
+                })
+                addEffect(InvertEffect())
+            })
         }
-        return TexturePlayerView(context).apply {
+        return PlayerView(context).apply {
             setRenderSize(renderSize)
             setRenderer(playerRender)
         }

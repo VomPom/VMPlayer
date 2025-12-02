@@ -43,7 +43,7 @@ import javax.microedition.khronos.egl.EGL10
  * 12. 终止 EGL,eglTerminate(),释放 EGL 显示连接和所有相关资源。
  */
 
-class EglHelper(val playerView: WeakReference<TexturePlayerView>, val renderSize: Size) {
+class EglHelper(val playerView: WeakReference<PlayerView>, val renderSize: Size) {
     private var eglDisplay: EGLDisplay? = null
     private var eglContext: EGLContext? = null
     private var eglSurface: EGLSurface? = null
