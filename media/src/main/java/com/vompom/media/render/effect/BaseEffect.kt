@@ -24,27 +24,8 @@ abstract class BaseEffect : IFilter {
         attribute vec2 aTextureCoord;
         varying vec2 vTextureCoord;
         
-        uniform float contentRatio;   // contentRatio: 渲染内容的 宽度 / 高度
-        uniform float viewRatio;      // viewRatio: 画布 (TextureView) 的 宽度 / 高度
-        
         void main() {
-            // 初始化缩放和平移向量
-            vec2 scale = vec2(1.0, 1.0);
-            // 核心逻辑: 实现 "保持原始比例并居中" (Contain / Fit 模式)
-            if (contentRatio > viewRatio) {
-                // 场景 1: 内容更宽 (内容更扁，例如 16:9 放在 4:3 画布上)
-                scale.y = viewRatio / contentRatio; 
-                scale.x = 1.0;
-            } else {
-                // 场景 2: 内容更高 (内容更瘦，例如 4:3 放在 16:9 画布上)
-                scale.x = contentRatio / viewRatio;
-                scale.y = 1.0;
-            }
-            // aPosition 是原始的 [-1, -1] 到 [1, 1] 坐标
-            // 因为缩放是居中进行的，所以不需要额外的平移 (offset) 即可居中
-            gl_Position = vec4(aPosition.xy * scale, 0.0, 1.0);
-    
-            // 传递纹理坐标给片元着色器
+            gl_Position = aPosition;
             vTextureCoord = aTextureCoord;
         }         
         """
@@ -66,8 +47,6 @@ abstract class BaseEffect : IFilter {
 
     private var aPositionHandle = -1
     private var aTextureHandle = -1
-    private var uContentRatioHandle = -1
-    private var uViewRatioHandle = -1
 
     private var vertexBuffer: FloatBuffer = FloatBuffer.allocate(0)
     private var textureBuffer: FloatBuffer = FloatBuffer.allocate(0)
@@ -120,9 +99,6 @@ abstract class BaseEffect : IFilter {
 
         aPositionHandle = GLES20.glGetAttribLocation(glProgram, "aPosition")
         aTextureHandle = GLES20.glGetAttribLocation(glProgram, "aTextureCoord")
-        uContentRatioHandle = GLES20.glGetUniformLocation(glProgram, "contentRatio")
-        uViewRatioHandle = GLES20.glGetUniformLocation(glProgram, "viewRatio")
-
     }
 
     private fun initBuffers() {
@@ -210,7 +186,13 @@ abstract class BaseEffect : IFilter {
     }
 
     open fun beforeDraw(textureInfo: TextureInfo) {
-        GLES20.glViewport(0, 0, renderViewSize.width, renderViewSize.height)
+        val rect = GLUtils.initGLViewportFit(renderViewSize,textureInfo.textureSize)
+        GLES20.glViewport(
+            rect.origin.x.toInt(),
+            rect.origin.y.toInt(),
+            rect.size.width.toInt(),
+            rect.size.height.toInt()
+        )
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         checkGLError("beforeDraw")
     }
@@ -218,9 +200,6 @@ abstract class BaseEffect : IFilter {
     protected fun onDraw(textureInfo: TextureInfo) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(textureInfo.textureType, textureInfo.textureID)
-
-        GLES20.glUniform1f(uViewRatioHandle, renderViewSize.width.toFloat() / renderViewSize.height.toFloat())
-        GLES20.glUniform1f(uContentRatioHandle, textureInfo.width.toFloat() / textureInfo.height.toFloat())
 
         GLES20.glEnableVertexAttribArray(aPositionHandle)
         GLES20.glVertexAttribPointer(aPositionHandle, 3, GLES20.GL_FLOAT, false, 0, vertexBuffer)

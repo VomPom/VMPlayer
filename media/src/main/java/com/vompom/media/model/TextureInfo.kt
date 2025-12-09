@@ -1,5 +1,7 @@
 package com.vompom.media.model
 
+import android.util.Size
+
 /**
  *
  * Created by @juliswang on 2025/11/27 20:51
@@ -13,4 +15,6 @@ class TextureInfo(
     val width: Int,
     val height: Int,
     val preferRotation: Int = 0
-)
+) {
+    val textureSize: Size = Size(width, height)
+}
