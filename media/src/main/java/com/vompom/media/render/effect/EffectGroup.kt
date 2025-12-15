@@ -4,7 +4,7 @@ import android.util.Size
 import com.vompom.media.model.TextureInfo
 import com.vompom.media.render.effect.inner.RenderEffect
 import com.vompom.media.render.effect.inner.TextureMatrixEffect
-import java.util.LinkedList
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  *
@@ -14,7 +14,7 @@ import java.util.LinkedList
  */
 
 class EffectGroup {
-    private val filterLinkedList: LinkedList<BaseEffect?> = LinkedList<BaseEffect?>()
+    private val filterQueue: ConcurrentLinkedQueue<BaseEffect?> = ConcurrentLinkedQueue<BaseEffect?>()
     private val textureMatrixEffect = TextureMatrixEffect()
     private var renderEffect: RenderEffect? = null
 
@@ -31,7 +31,7 @@ class EffectGroup {
 
     fun applyNewTexture(inputTexture: TextureInfo) {
         var textureInfo: TextureInfo = textureMatrixEffect.applyNewTexture(inputTexture)
-        filterLinkedList.forEach {
+        filterQueue.forEach {
             if (it != null) {
                 textureInfo = it.applyNewTexture(textureInfo)
             }
@@ -42,11 +42,11 @@ class EffectGroup {
     }
 
     fun addEffect(effect: BaseEffect) {
-        filterLinkedList.add(effect)
+        filterQueue.add(effect)
     }
 
     fun updateRenderViewSize(size: Size) {
-        filterLinkedList.forEach {
+        filterQueue.forEach {
             it?.updateRenderViewSize(size)
         }
         textureMatrixEffect.updateRenderViewSize(size)

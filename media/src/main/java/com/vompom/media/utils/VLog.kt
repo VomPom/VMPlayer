@@ -50,7 +50,7 @@ object VLog {
 
     fun v(tag: String, msg: String) {
         if (isLoggable(LogLevel.VERBOSE)) {
-            Log.v("tag", msg)
+            Log.v(tag, msg)
         }
     }
 

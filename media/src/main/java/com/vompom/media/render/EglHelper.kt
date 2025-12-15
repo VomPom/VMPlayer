@@ -43,7 +43,7 @@ import javax.microedition.khronos.egl.EGL10
  * 12. 终止 EGL,eglTerminate(),释放 EGL 显示连接和所有相关资源。
  */
 
-class EglHelper(val playerView: WeakReference<PlayerView>, val renderSize: Size) {
+class EglHelper(val playerView: WeakReference<PlayerView>?, val renderSize: Size) {
     private var eglDisplay: EGLDisplay? = null
     private var eglContext: EGLContext? = null
     private var eglSurface: EGLSurface? = null
@@ -105,7 +105,7 @@ class EglHelper(val playerView: WeakReference<PlayerView>, val renderSize: Size)
     }
 
     fun createEGLSurface() {
-        val surface = playerView.get()?.surfaceTexture
+        val surface = playerView?.get()?.surfaceTexture
         if (surface != null) {
             // Create a window surface, and attach it to the Surface we received.
             val surfaceAttribs = intArrayOf(
@@ -122,14 +122,12 @@ class EglHelper(val playerView: WeakReference<PlayerView>, val renderSize: Size)
                 EGL14.EGL_HEIGHT, renderSize.height,
                 EGL14.EGL_NONE
             )
-            // todo:: 改造整个流程，在导出的时候仍然需要成功创建 eglSurface，需要使用下面的方法
-            //  eglSurface = EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, surfaceAttribList, 0)
-            return
+            eglSurface = EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, surfaceAttribList, 0)
         }
 
         if (eglSurface === EGL14.EGL_NO_SURFACE) {
             glLogE("eglCreatePbufferSurface failed")
-            return
+            throw RuntimeException("Failed to create EGL surface")
         }
 
         /*
@@ -142,6 +140,7 @@ class EglHelper(val playerView: WeakReference<PlayerView>, val renderSize: Size)
              * TextureView surface has been destroyed.
              */
             glLogE("eglMakeCurrent failed")
+            throw RuntimeException("Failed to make EGL context current")
         }
     }
 

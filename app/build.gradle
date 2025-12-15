@@ -40,5 +40,9 @@ dependencies {
     implementation Deps.androidx.appcompat
     implementation Deps.androidx.constraintlayout
     implementation Deps.google.gson
+    implementation Deps.androidx.material
+    implementation Deps.androidx.recyclerview
+    implementation 'com.google.android.flexbox:flexbox:3.0.0'
+
     implementation project(':media')
 }

@@ -19,18 +19,43 @@ import java.nio.ByteOrder
 
 object GLUtils {
     fun createTexture(type: Int): Int {
+        // 检查当前是否有有效的EGL上下文
+        val errorBefore = GLES20.glGetError()
+        if (errorBefore != GLES20.GL_NO_ERROR) {
+            VLog.e("OpenGL error before texture creation: 0x${Integer.toHexString(errorBefore)}")
+        }
+
         val textures = IntArray(1)
         GLES20.glGenTextures(1, textures, 0)
 
+        // 检查glGenTextures是否成功
+        val errorAfterGen = GLES20.glGetError()
+        if (errorAfterGen != GLES20.GL_NO_ERROR) {
+            VLog.e("glGenTextures failed with error: 0x${Integer.toHexString(errorAfterGen)}")
+            return 0
+        }
+
         val textureId = textures[0]
+        if (textureId == 0) {
+            VLog.e("glGenTextures returned texture ID 0")
+            return 0
+        }
+
         GLES20.glBindTexture(type, textureId)
-        checkGLError("glBindTexture mTextureID")
+        if (!checkGLError("glBindTexture mTextureID")) {
+            return 0
+        }
 
         GLES20.glTexParameterf(type, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR.toFloat())
         GLES20.glTexParameterf(type, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR.toFloat())
         GLES20.glTexParameteri(type, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(type, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        checkGLError("glTexParameter")
+
+        if (!checkGLError("glTexParameter")) {
+            return 0
+        }
+
+        VLog.d("Successfully created texture ID: $textureId (type: $type)")
         return textureId
     }
 

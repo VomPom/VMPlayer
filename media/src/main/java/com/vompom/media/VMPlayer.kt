@@ -12,7 +12,7 @@ import com.vompom.media.docode.decorder.AudioDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
 import com.vompom.media.docode.track.AudioDecoderTrack
 import com.vompom.media.docode.track.VideoDecoderTrack
-import com.vompom.media.export.Exporter
+import com.vompom.media.export.ExportWithEffect
 import com.vompom.media.export.IExporter
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
@@ -21,7 +21,6 @@ import com.vompom.media.render.IPlayerView
 import com.vompom.media.render.PlayerRender
 import com.vompom.media.render.PlayerView
 import com.vompom.media.render.effect.EffectGroup
-import com.vompom.media.render.effect.InvertEffect
 import com.vompom.media.render.effect.RGBEffect
 
 /**
@@ -72,22 +71,24 @@ class VMPlayer : IPlayer, Handler.Callback {
     }
 
     private fun createTexturePlayerView(context: Context): PlayerView {
-        val playerRender = PlayerRender().apply {
+        val playerRender = createRender()
+        return PlayerView(context).apply {
+            setRenderSize(renderSize)
+            setRenderer(playerRender)
+        }
+    }
+
+    private fun createRender(): PlayerRender {
+        return PlayerRender().apply {
             initRenderSize(renderSize)
             setSurfaceReadyCallback { surface ->
                 onSurfaceCreate(surface)
             }
-            // todo:: use play item...
             setEffectGroup(EffectGroup(true).apply {
                 addEffect(RGBEffect().apply {
                     setRGB(0.5f, 1.0f, 1.0f)
                 })
-                addEffect(InvertEffect())
             })
-        }
-        return PlayerView(context).apply {
-            setRenderSize(renderSize)
-            setRenderer(playerRender)
         }
     }
 

@@ -78,6 +78,7 @@ class PlayerRender {
 
     fun initRenderSize(size: Size) {
         this.renderSize = size
+        effectGroup?.updateRenderViewSize(size)
     }
 
     fun onDrawFrame() {

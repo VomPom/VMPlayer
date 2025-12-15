@@ -52,3 +52,55 @@ fun usToMs(us: Long): Long {
 fun msToUs(ms: Long): Long {
     return ms * MS_TO_US
 }
+
+/**
+ * 将微秒格式化为时间字符串
+ * 格式: "分:秒" 或 "时:分:秒"
+ * @param us 微秒数
+ * @return 格式化的时间字符串
+ */
+fun formatTimeFromUs(us: Long): String {
+    val totalSeconds = usToS(us)
+    return formatTimeFromSeconds(totalSeconds)
+}
+
+/**
+ * 将秒数格式化为时间字符串
+ * 格式: "分:秒" 或 "时:分:秒"
+ * @param seconds 秒数
+ * @return 格式化的时间字符串
+ */
+fun formatTimeFromSeconds(seconds: Long): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val secs = seconds % 60
+    
+    return if (hours > 0) {
+        // 格式: "时:分:秒"
+        String.format("%02d:%02d:%02d", hours, minutes, secs)
+    } else {
+        // 格式: "分:秒"
+        String.format("%02d:%02d", minutes, secs)
+    }
+}
+
+/**
+ * 将秒数格式化为时间字符串
+ * 格式: "分:秒" 或 "时:分:秒"
+ * @param seconds 秒数
+ * @return 格式化的时间字符串
+ */
+fun formatTimeFromSeconds(seconds: Float): String {
+    return formatTimeFromSeconds(seconds.toLong())
+}
+
+/**
+ * 将微秒格式化为时间字符串
+ * 格式: "分:秒" 或 "时:分:秒"
+ * @param us 微秒数
+ * @return 格式化的时间字符串
+ */
+fun formatTimeFromUs(us: Float): String {
+    val totalSeconds = usToS(us)
+    return formatTimeFromSeconds(totalSeconds.toLong())
+}

@@ -2,7 +2,8 @@
 
 ## 项目简介
 
-这是一个基于 Android 平台开发的**实验性**视频播放器项目，是对视频播放器渲染技术深入探索的成果。项目支持多视频片段播放、实时预览、视频导出等功能，采用模块化架构设计，包含自定义的媒体处理框架和播放器实现。
+这是一个基于 Android 平台开发的**实验性**
+视频播放器项目，是对视频播放器渲染技术深入探索的成果。项目支持多视频片段播放、实时预览、视频导出等功能，采用模块化架构设计，包含自定义的媒体处理框架和播放器实现。
 
 > **注意**: 这是一个个人学习和技术探索项目，主要用于研究视频渲染、OpenGL ES、音视频同步、MediaCodec编解码等技术。代码仅供学习参考，不建议直接用于生产环境。
 
@@ -40,6 +41,8 @@
 - 📊 **实时进度**: 导出进度回调
 - ⚙️ **可配置参数**: 分辨率、码率、帧率可自定义
 - 🔄 **多线程处理**: 音视频独立线程处理，提高导出效率
+
+## 界面演示
 
 ## 项目结构
 
@@ -229,73 +232,6 @@ Exporter (导出管理器)
     - AudioTrack (音频播放)
     - HandlerThread (线程管理)
     - Coroutines (协程-用于导出流程)
-
-## 使用示例
-
-### 播放视频
-
-```kotlin
-// 创建播放器
-val player = VMPlayer(context, surfaceView)
-
-// 设置播放列表
-val segments = listOf(
-    TrackSegment(asset1, timeRange1),
-    TrackSegment(asset2, timeRange2)
-)
-player.setSegments(segments)
-
-// 播放控制
-player.prepare()
-player.play()
-player.pause()
-player.seek(positionUs)
-player.stop()
-```
-
-### 导出视频
-
-```kotlin
-// 创建导出管理器
-val exporter = Exporter()
-
-// 配置导出参数
-val config = Exporter.ExportConfig(
-    outputFile = File("/path/to/output.mp4"),
-    outputSize = Size(1280, 720),
-    videoBitRate = 2000000,  // 2Mbps
-    audioBitRate = 128000,   // 128kbps
-    frameRate = 30
-)
-
-// 开始导出
-exporter.startExport(
-    segments = segments,
-    config = config,
-    listener = object : Exporter.ExportListener {
-        override fun onExportStart() {}
-        override fun onExportProgress(progress: Float) {}
-        override fun onExportComplete(outputFile: File) {}
-        override fun onExportError(error: Exception) {}
-    }
-)
-```
-
-### 应用渲染效果
-
-```kotlin
-// 创建特效组
-val effectGroup = EffectGroup()
-
-// 添加反转特效
-effectGroup.addEffect(InvertEffect())
-
-// 添加RGB调整特效
-effectGroup.addEffect(RGBEffect(redScale = 1.2f, greenScale = 0.8f, blueScale = 1.0f))
-
-// 应用到播放器
-player.setEffect(effectGroup)
-```
 
 ## 最新更新
 

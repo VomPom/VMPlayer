@@ -71,6 +71,9 @@ abstract class BaseEncoder : IEncoder {
 
         while (!eosReceived) {
             val outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
+            if (this is VideoEncoder) {
+                VLog.d("--julis", "outputBufferIndex:${outputBufferIndex}")
+            }
             when {
                 outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
                     if (waitForEOS) {
@@ -84,8 +87,9 @@ abstract class BaseEncoder : IEncoder {
 
                 outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     if (onFormatChange != null && trackIndex == -1) {
-                        trackIndex = onFormatChange(encoder.outputFormat)
-                        VLog.d(TAG, "Output format changed, track index: $trackIndex")
+                        val format = encoder.outputFormat
+                        trackIndex = onFormatChange(format)
+                        VLog.d(TAG, "Output format changed, mime:${format.getString("mime")} track index: $trackIndex")
                     } else if (waitForEOS) {
                         VLog.d(TAG, "Output format changed during EOS drain")
                     }

@@ -186,7 +186,7 @@ abstract class BaseEffect : IFilter {
     }
 
     open fun beforeDraw(textureInfo: TextureInfo) {
-        val rect = GLUtils.initGLViewportFit(renderViewSize,textureInfo.textureSize)
+        val rect = GLUtils.initGLViewportFit(renderViewSize, textureInfo.textureSize)
         GLES20.glViewport(
             rect.origin.x.toInt(),
             rect.origin.y.toInt(),
