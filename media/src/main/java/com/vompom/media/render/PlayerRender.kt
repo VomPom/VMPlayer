@@ -16,10 +16,9 @@ import kotlin.math.ceil
  *
  * Created by @juliswang on 2025/11/20 21:28
  *
- * @Description
+ * @Description 渲染特效组
  */
-
-class PlayerRender {
+class PlayerRender() : IRendererEffect {
 
     // 解码器、渲染链将会渲染的目标（并非上屏的Surface）
     private var renderSurfaceTexture: SurfaceTexture? = null
@@ -38,7 +37,7 @@ class PlayerRender {
         surfaceReadyCallback = callback
     }
 
-    fun setEffectGroup(effects: EffectGroup) {
+    override fun setEffectGroup(effects: EffectGroup?) {
         this.effectGroup = effects
     }
 
@@ -129,4 +128,9 @@ class PlayerRender {
     fun release() {
         renderSurfaceTexture?.release()
     }
+}
+
+//todo:: 后面干掉这个接口，不太优雅
+interface IRendererEffect {
+    fun setEffectGroup(effects: EffectGroup?)
 }

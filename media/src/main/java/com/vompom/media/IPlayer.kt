@@ -24,8 +24,6 @@ interface IPlayer {
     fun setPlayerListener(listener: PlayerListener)
     fun createExporter(): IExporter
     interface PlayerListener {
-
         fun onPositionChanged(currentDurationUs: Long, playerDurationUs: Long)
-
     }
 }

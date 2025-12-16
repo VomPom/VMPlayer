@@ -7,6 +7,8 @@ import android.opengl.EGLDisplay
 import android.opengl.EGLSurface
 import android.opengl.GLES20
 import android.util.Size
+import android.view.Surface
+import com.vompom.media.player.PlayerView
 import com.vompom.media.utils.VLog
 import java.lang.ref.WeakReference
 import javax.microedition.khronos.egl.EGL10
@@ -42,8 +44,7 @@ import javax.microedition.khronos.egl.EGL10
  * 11. 销毁上下文,eglDestroyContext(),销毁渲染上下文。
  * 12. 终止 EGL,eglTerminate(),释放 EGL 显示连接和所有相关资源。
  */
-
-class EglHelper(val playerView: WeakReference<PlayerView>?, val renderSize: Size) {
+class EglHelper(val encodeSurface: Surface? = null, val playerView: WeakReference<PlayerView>?, val renderSize: Size) {
     private var eglDisplay: EGLDisplay? = null
     private var eglContext: EGLContext? = null
     private var eglSurface: EGLSurface? = null
@@ -105,17 +106,23 @@ class EglHelper(val playerView: WeakReference<PlayerView>?, val renderSize: Size
     }
 
     fun createEGLSurface() {
-        val surface = playerView?.get()?.surfaceTexture
-        if (surface != null) {
+        // todo: optimize use surface instead of surfaceTexture
+        val surfaceTexture = playerView?.get()?.surfaceTexture
+        if (encodeSurface != null || surfaceTexture != null) {
             // Create a window surface, and attach it to the Surface we received.
-            val surfaceAttribs = intArrayOf(
-                EGL14.EGL_NONE
-            )
-            //
-            eglSurface = EGL14.eglCreateWindowSurface(
-                eglDisplay, eglConfig, surface,
-                surfaceAttribs, 0
-            )
+            val surfaceAttribs = intArrayOf(EGL14.EGL_NONE)
+            if (encodeSurface != null) {
+                eglSurface = EGL14.eglCreateWindowSurface(
+                    eglDisplay, eglConfig, encodeSurface,
+                    surfaceAttribs, 0
+                )
+            }
+            if (surfaceTexture != null) {
+                eglSurface = EGL14.eglCreateWindowSurface(
+                    eglDisplay, eglConfig, surfaceTexture,
+                    surfaceAttribs, 0
+                )
+            }
         } else {
             val surfaceAttribList = intArrayOf(
                 EGL14.EGL_WIDTH, renderSize.width,

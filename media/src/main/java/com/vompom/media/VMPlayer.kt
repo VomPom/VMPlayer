@@ -12,16 +12,14 @@ import com.vompom.media.docode.decorder.AudioDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
 import com.vompom.media.docode.track.AudioDecoderTrack
 import com.vompom.media.docode.track.VideoDecoderTrack
-import com.vompom.media.export.ExportWithEffect
+import com.vompom.media.export.Exporter
 import com.vompom.media.export.IExporter
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
+import com.vompom.media.player.IPlayerView
 import com.vompom.media.player.PlayerThread
-import com.vompom.media.render.IPlayerView
+import com.vompom.media.player.PlayerView
 import com.vompom.media.render.PlayerRender
-import com.vompom.media.render.PlayerView
-import com.vompom.media.render.effect.EffectGroup
-import com.vompom.media.render.effect.RGBEffect
 
 /**
  *
@@ -31,6 +29,7 @@ import com.vompom.media.render.effect.RGBEffect
  *
  */
 class VMPlayer : IPlayer, Handler.Callback {
+    private val renderSession: IRenderSession
     private var segments: List<TrackSegment> = emptyList()
     private var durationUs: Long = -1L
 
@@ -50,12 +49,13 @@ class VMPlayer : IPlayer, Handler.Callback {
         const val DEFAULT_RENDER_WIDTH = 1280
         const val DEFAULT_RENDER_HEIGHT = 720
 
-        fun create(frameLayout: FrameLayout): VMPlayer {
-            return VMPlayer(frameLayout)
+        fun create(frameLayout: FrameLayout, renderSession: IRenderSession): VMPlayer {
+            return VMPlayer(frameLayout, renderSession)
         }
     }
 
-    private constructor(playerContainer: FrameLayout) {
+    private constructor(playerContainer: FrameLayout, renderSession: IRenderSession) {
+        this.renderSession = renderSession
         initContentView(playerContainer)
     }
 
@@ -72,10 +72,12 @@ class VMPlayer : IPlayer, Handler.Callback {
 
     private fun createTexturePlayerView(context: Context): PlayerView {
         val playerRender = createRender()
-        return PlayerView(context).apply {
+        val playerView = PlayerView(context).apply {
             setRenderSize(renderSize)
             setRenderer(playerRender)
         }
+        renderSession.attachRenderChain(playerView.getGLThread(), playerRender)
+        return playerView
     }
 
     private fun createRender(): PlayerRender {
@@ -84,11 +86,6 @@ class VMPlayer : IPlayer, Handler.Callback {
             setSurfaceReadyCallback { surface ->
                 onSurfaceCreate(surface)
             }
-            setEffectGroup(EffectGroup(true).apply {
-                addEffect(RGBEffect().apply {
-                    setRGB(0.5f, 1.0f, 1.0f)
-                })
-            })
         }
     }
 
@@ -152,6 +149,7 @@ class VMPlayer : IPlayer, Handler.Callback {
     override fun setRenderSize(size: Size) {
         this.renderSize = size
         playerView?.setRenderSize(size)
+        renderSession.updateRenderSize(size)
     }
 
     override fun setLoop(loop: Boolean) {
@@ -162,7 +160,15 @@ class VMPlayer : IPlayer, Handler.Callback {
         this.playListener = listener
     }
 
-    override fun createExporter(): IExporter = Exporter(segments)
+    /**
+     * fixme:这里待完善，目前通过 renderSession 作为中间层，获取渲染数据，maybe 有更好的方式
+     *
+     * @return
+     */
+    override fun createExporter(): IExporter {
+        val renderModel = renderSession.getRenderModel()
+        return Exporter(segments, renderModel)
+    }
 
     override fun handleMessage(msg: Message): Boolean {
         when (msg.what) {

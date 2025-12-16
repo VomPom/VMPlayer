@@ -3,7 +3,10 @@ package com.vompom.media.render.effect
 import com.vompom.media.model.TextureInfo
 
 /**
- * 灰度（黑白）滤镜特效
+ *
+ * Created by @juliswang on 2025/12/15 21:13
+ *
+ * @Description 灰度（黑白）滤镜特效
  */
 class GrayscaleEffect : BaseEffect() {
     override fun getFragmentShaderCode(textureInfo: TextureInfo): String {

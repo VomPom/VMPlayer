@@ -1,3 +1,39 @@
+
+
+```mermaid
+flowchart TD
+    subgraph Input [输入阶段]
+        A[原始MP4] --> B[MediaExtractor]
+        B --> C[编码数据包<br>ByteBuffer]
+    end
+
+    subgraph Decode [解码阶段]
+        C --> D[MediaCodec<br>解码器]
+        D -- “关键设置” --> E[Surface设置为null<br>不关联显示]
+        E --> F[原始YUV帧<br>通过Image/ByteBuffer获取]
+    end
+
+    subgraph Encode [编码阶段]
+        F --> G{是否需要格式转换?}
+        
+        G -- 否<br>格式兼容 --> H[直接ByteBuffer传递]
+        H --> I[MediaCodec编码器]
+        
+        G -- 是<br>格式不兼容 --> J[创建中介Surface]
+        J --> K[Surface<br>连接SurfaceTexture]
+        K --> L[OpenGL纹理<br>用于格式转换]
+        L --> M[GLES渲染转换格式]
+        M --> N[编码器输入Surface]
+        N --> I
+    end
+
+    subgraph Output [输出阶段]
+        I --> O[重新编码数据包]
+        O --> P[MediaMuxer]
+        P --> Q[新MP4文件]
+    end
+```
+
 预览（Preview） 和导出（Export） 两个模式使用的渲染架构和数据流
 
 ```mermaid

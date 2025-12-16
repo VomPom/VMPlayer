@@ -1,6 +1,9 @@
 package com.vompom.media
 
-import com.vompom.media.render.effect.BaseEffect
+import android.util.Size
+import com.vompom.media.model.RenderModel
+import com.vompom.media.model.VideoEffectEntity
+import com.vompom.media.render.IRendererEffect
 
 /**
  *
@@ -10,7 +13,12 @@ import com.vompom.media.render.effect.BaseEffect
  */
 
 interface IRenderSession {
+    fun updateRenderSize(size: Size)
     fun bindPlayer(player: IPlayer)
-    fun addEffect(effect: BaseEffect)
-    fun removeEffect(effect: BaseEffect)
+    fun addEffect(entity: VideoEffectEntity)
+    fun removeEffect(entity: VideoEffectEntity)
+    fun getRenderModel(): RenderModel
+    // fixme:: 这个接口设计得不太友好，考虑整体结构调整干掉它
+    fun attachRenderChain(glThread: IQueueEvent, renderer: IRendererEffect)
+    fun flush()
 }

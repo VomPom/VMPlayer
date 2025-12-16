@@ -9,7 +9,11 @@ import com.vompom.media.export.encoder.VideoEncoder
 import com.vompom.media.export.reader.AudioReader
 import com.vompom.media.export.reader.IReader
 import com.vompom.media.export.reader.VideoReader
+import com.vompom.media.model.RenderModel
 import com.vompom.media.model.TrackSegment
+import com.vompom.media.render.GLThread
+import com.vompom.media.render.PlayerRender
+import com.vompom.media.render.effect.EffectGroup
 import com.vompom.media.utils.ThreadUtils
 import com.vompom.media.utils.VLog
 import kotlinx.coroutines.CoroutineScope
@@ -25,11 +29,8 @@ import java.nio.ByteBuffer
  * Created by @juliswang on 2025/11/05 21:58
  *
  * @Description 负责协调视频和音频写入 mp4 文件
- * todo:: 使用子线程去处理整个流程
- * todo:: 使用一个 session 记录渲染的数据
  */
-
-class Exporter(val segments: List<TrackSegment>) : IExporter {
+class Exporter(val segments: List<TrackSegment>, val renderModel: RenderModel) : IExporter {
     private val exportScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var listener: ExportListener? = null
 
@@ -60,9 +61,7 @@ class Exporter(val segments: List<TrackSegment>) : IExporter {
     private var muxerLock = Object()
 
     private lateinit var config: ExportConfig
-
-
-    override fun export(outputFile: File?, config: ExportConfig, listener: ExportListener?) {
+    override fun export(outputFile: File?, config: ExportConfig, listener: Exporter.ExportListener?) {
         if (segments.isEmpty()) {
             listener?.onExportError(IllegalStateException("No segments to export"))
             return
@@ -103,12 +102,8 @@ class Exporter(val segments: List<TrackSegment>) : IExporter {
      */
     private fun startExport() {
         initEncoders()
-        initDecoders()
+        initDecodersAndRender()
         initMediaMuxer()
-        exportScope.launch {
-            readAndWrite(videoReader, videoEncoder, true)
-            readAndWrite(audioReader, audioEncoder, false)
-        }
     }
 
     private fun initMediaMuxer() {
@@ -116,7 +111,7 @@ class Exporter(val segments: List<TrackSegment>) : IExporter {
         mediaMuxer = DefaultMediaMuxer(config.outputFile.absolutePath)
     }
 
-    private fun initEncoders(): Surface {
+    private fun initEncoders() {
         AudioEncoder(config).apply {
             prepare()
             setBufferEncodeCallback { trackIndex, buffer, bufferInfo ->
@@ -124,19 +119,82 @@ class Exporter(val segments: List<TrackSegment>) : IExporter {
             }
             audioEncoder = this
         }
-        return VideoEncoder(config).apply {
+        VideoEncoder(config).apply {
             prepare()
             setBufferEncodeCallback { trackIndex, buffer, bufferInfo ->
                 writeSampleData(trackIndex, buffer, bufferInfo)
             }
             videoEncoder = this
-        }.getEncoderSurface()
+        }
     }
 
-    private fun initDecoders() {
-        val surface = (videoEncoder as VideoEncoder).getEncoderSurface()
+    /**
+     * 初始化解码链路
+     *
+     * 1. 从 VideoEncoder 中获取编码输入的 Surface（Encoder 内部通过 createInputSurface 创建）
+     * 2. 创建带特效的 PlayerRender（内部会创建用于解码输出的 SurfaceTexture/Surface）
+     * 3. 启动 GL 渲染线程 GLThread，将编码器 Surface 作为最终渲染目标
+     */
+    private fun initDecodersAndRender() {
+        // 编码器输入 Surface：VideoEncoder 使用 COLOR_FormatSurface 时通过 createInputSurface() 创建
+        val encoderSurface = (videoEncoder as VideoEncoder).getEncoderSurface()
+        // 创建负责处理 OES 纹理 + 特效链路的渲染器
+        val renderer = initRender()
+        // 启动 GLThread，将编码器 Surface 绑定为 EGL 的输出窗口
+        initRender(renderer, encoderSurface)
+    }
+
+    /**
+     * 绑定渲染器与输出 Surface，并启动 GL 渲染线程
+     *
+     * @param renderer 负责处理解码输出纹理和特效的渲染器
+     * @param surface  作为 EGLWindowSurface 的目标 Surface，导出时通常为编码器的输入 Surface
+     */
+    fun initRender(renderer: PlayerRender, surface: Surface) {
+        val glThread = GLThread(
+            renderer,
+            surface,            // 导出场景下，将编码器输入 Surface 作为 EGL 输出窗口
+            null,               // 导出场景下不需要预览 View，仅使用编码 Surface
+            config.outputSize
+        )
+        glThread.start()
+
+    }
+
+    /**
+     * 构建用于导出流程的渲染器
+     *
+     * - 设置渲染尺寸，与导出视频分辨率保持一致
+     * - 配置 Surface 回调：当内部创建用于解码输出的 Surface 后，触发 onRenderSurfaceCreate
+     */
+    private fun initRender(): PlayerRender {
+        return PlayerRender().apply {
+            setEffectGroup(
+                EffectGroup.createEffectGroup(
+                    renderModel.effectList
+                )
+            )
+            initRenderSize(config.outputSize)
+
+            // 当内部通过 OES 纹理创建出用于解码输出的 Surface 后回调
+            // 这里拿到的 Surface 会传给 VideoReader 作为 MediaCodec Decoder 的输出目标
+            setSurfaceReadyCallback { surface ->
+                onRenderSurfaceCreate(surface)
+            }
+        }
+    }
+
+    /**
+     * 当 GL 渲染线程创建用于解码输出的 Surface 时回调，这时候才能开始读取数据
+     * @param surface 用于特效渲染的 Surface，注意与 Encoder 的 getEncoderSurface() 区分
+     */
+    private fun onRenderSurfaceCreate(surface: Surface) {
         videoReader = VideoReader(segments, surface, config.frameRate)
         audioReader = AudioReader(segments)
+        exportScope.launch {
+            readAndWrite(videoReader, videoEncoder, true)
+            readAndWrite(audioReader, audioEncoder, false)
+        }
     }
 
 

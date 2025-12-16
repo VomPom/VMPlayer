@@ -3,11 +3,12 @@
     android:id="@+id/tv_effect"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:layout_marginEnd="5dp"
+    android:background="@drawable/effect_item_background"
+    android:gravity="center"
     android:minWidth="40dp"
     android:minHeight="30dp"
-    android:gravity="center"
     android:paddingHorizontal="5dp"
     android:paddingVertical="8dp"
-    android:textSize="10sp"
-    android:background="@drawable/effect_item_background"
-    android:textColor="@android:color/black" />
+    android:textColor="@android:color/black"
+    android:textSize="10sp" />

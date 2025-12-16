@@ -5,23 +5,20 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.vompom.media.render.effect.BaseEffect
+import com.vompom.media.model.VideoEffectEntity
 import com.vompom.vmplayer.R
-import com.vompom.vmplayer.model.EffectType
-import com.vompom.vmplayer.model.VideoEffect
 
 /**
  * 特效适配器
  */
 class EffectAdapter(
-    private var effects: List<VideoEffect> = emptyList(),
-    private val onEffectAdded: (VideoEffect) -> Unit,
-    private val onEffectRemoved: (VideoEffect) -> Unit
+    private val onEffectSelected: (VideoEffectEntity) -> Unit,
+    private val onEffectRemoved: (VideoEffectEntity) -> Unit
 ) : RecyclerView.Adapter<EffectAdapter.EffectViewHolder>() {
+    private var effects: List<VideoEffectEntity> = emptyList()
+    private val selectedPositions = mutableSetOf<Int>(0)    // 默认选中第一个（无特效时)
 
-    private val selectedPositions = mutableSetOf<Int>() // 使用Set来存储所有选中的位置
-
-    fun updateEffects(newEffects: List<VideoEffect>) {
+    fun updateEffects(newEffects: List<VideoEffectEntity>) {
         effects = newEffects
         notifyDataSetChanged()
     }
@@ -42,7 +39,7 @@ class EffectAdapter(
                 onEffectRemoved(effect)
             } else {
                 selectedPositions.add(position)
-                onEffectAdded(effect)
+                onEffectSelected(effect)
             }
 
             holder.itemView.isSelected = selectedPositions.contains(position)
@@ -54,22 +51,8 @@ class EffectAdapter(
     /**
      * 获取所有选中的特效
      */
-    fun getSelectedEffects(): List<VideoEffect> {
+    fun getSelectedEffects(): List<VideoEffectEntity> {
         return selectedPositions.map { effects[it] }
-    }
-
-    /**
-     * 获取选中的特效类型列表
-     */
-    fun getSelectedEffectTypes(): List<EffectType> {
-        return getSelectedEffects().map { it.type }
-    }
-
-    /**
-     * 获取选中的特效对象列表
-     */
-    fun getSelectedEffectObjects(): List<BaseEffect> {
-        return getSelectedEffects().mapNotNull { it.effect }
     }
 
     /**
@@ -107,7 +90,7 @@ class EffectAdapter(
     class EffectViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvEffect: TextView = itemView.findViewById(R.id.tv_effect)
 
-        fun bind(effect: VideoEffect, isSelected: Boolean) {
+        fun bind(effect: VideoEffectEntity, isSelected: Boolean) {
             tvEffect.text = effect.name
             itemView.isSelected = isSelected
         }

@@ -14,19 +14,25 @@ import com.vompom.media.VMPlayer
 import com.vompom.media.export.Exporter.ExportConfig
 import com.vompom.media.export.Exporter.ExportListener
 import com.vompom.media.model.ClipAsset
+import com.vompom.media.model.EffectType
 import com.vompom.media.model.TimeRange
+import com.vompom.media.model.VideoEffectEntity
 import com.vompom.media.render.VMRenderSession
+import com.vompom.media.render.effect.GrayscaleEffect
+import com.vompom.media.render.effect.InvertEffect
+import com.vompom.media.render.effect.RGBEffect
+import com.vompom.media.render.effect.SepiaEffect
 import com.vompom.media.utils.formatTimeFromUs
 import com.vompom.vmplayer.adapter.EffectAdapter
 import com.vompom.vmplayer.databinding.ActivityMediaBinding
-import com.vompom.vmplayer.model.VideoEffect
 import java.io.File
 
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMediaBinding
     private lateinit var player: IPlayer
-    private val renderSession = VMRenderSession.createVMSession()
+    private lateinit var effectAdapter: EffectAdapter
+    private val renderSession = VMRenderSession.createRenderSession()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,35 +83,54 @@ class MainActivity : AppCompatActivity() {
      * 初始化特效RecyclerView
      */
     private fun initEffectsRecyclerView() {
-        val effects = VideoEffect.getDefaultEffects()
-        val effectAdapter = EffectAdapter(
-            effects,
-            onEffectAdded = { it ->
-                it.effect?.let { renderSession.addEffect(it) }
+        effectAdapter = EffectAdapter(
+            onEffectSelected = { it ->
+                onEffectAdded(it)
             },
             onEffectRemoved = { it ->
-                it.effect?.let { renderSession.removeEffect(it) }
+                renderSession.removeEffect(it)
             }
-        )
+        ).apply {
+            updateEffects(
+                listOf(
+                    VideoEffectEntity(EffectType.NONE, "无特效", null),
+                    VideoEffectEntity(EffectType.GRAYSCALE, "黑白滤镜", GrayscaleEffect::class.java),
+                    VideoEffectEntity(EffectType.SEPIA, "复古滤镜", SepiaEffect::class.java),
+                    VideoEffectEntity(EffectType.INVERT, "反相效果", InvertEffect::class.java),
+                    VideoEffectEntity(EffectType.RGB_ADJUST, "RGB调整", RGBEffect::class.java)
+                )
+            )
+        }
+
         binding.rvEffects.apply {
             layoutManager = FlexboxLayoutManager(this@MainActivity)
             adapter = effectAdapter
         }
     }
 
-    private fun onEffectsSelected(effects: List<VideoEffect>) {
-        // TODO: 将选中的特效应用到播放器
+    private fun onEffectAdded(it: VideoEffectEntity) {
+        if (it.type == EffectType.NONE) {
+            effectAdapter.apply {
+                getSelectedEffects().forEach { renderSession.removeEffect(it) }
+                clearSelections()
+                selectPosition(0)
+            }
+        } else {
+            renderSession.addEffect(it)
+            effectAdapter.deselectPosition(0)
+        }
     }
 
     private fun initPlayer() {
-        player = VMPlayer.create(binding.flPlayer)
+        player = VMPlayer.create(binding.flPlayer, renderSession)
         player.setRenderSize(Size(1280, 720))
         player.setPlayList(
             listOf(
-                ClipAsset(ResUtils.testHok, TimeRange.create(2f, 3f)),
-//                ClipAsset(ResUtils.testHokV, TimeRange.create(3f, 2f)),
-//                ClipAsset(ResUtils.video10s, TimeRange.create(2f, 2f)),
-//                ClipAsset(ResUtils.testWz, TimeRange.create(2f, 3f)),
+                ClipAsset(ResUtils.testHok, TimeRange.create(2f, 5f)),
+                // fixme:: 处理不同方向(尺寸/比例)视频的兼容
+                ClipAsset(ResUtils.testHokV, TimeRange.create(3f, 2f)),
+                ClipAsset(ResUtils.video10s, TimeRange.create(2f, 2f)),
+                ClipAsset(ResUtils.testWz, TimeRange.create(2f, 3f)),
             ),
         )
         player.setPlayerListener(object : IPlayer.PlayerListener {
@@ -159,18 +184,18 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-//    override fun onPause() {
-//        super.onPause()
-//        player.pause()
-//    }
-//
-//    override fun onResume() {
-//        super.onResume()
-//        player.play()
-//    }
-//
-//    override fun onDestroy() {
-//        super.onDestroy()
-//        player.release()
-//    }
+    override fun onPause() {
+        super.onPause()
+        player.pause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        player.play()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player.release()
+    }
 }

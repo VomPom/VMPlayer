@@ -1,9 +1,11 @@
-package com.vompom.media.render
+package com.vompom.media.player
 
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.util.Size
 import android.view.TextureView
+import com.vompom.media.render.GLThread
+import com.vompom.media.render.PlayerRender
 import java.lang.ref.WeakReference
 
 /**
@@ -65,9 +67,15 @@ class PlayerView : TextureView, TextureView.SurfaceTextureListener, IPlayerView 
 
     fun setRenderer(renderer: PlayerRender) {
         glThread = GLThread(
-            renderer, WeakReference(this),
+            renderer,
+            null,
+            WeakReference(this),
             renderSize
         )
         glThread?.start()
+    }
+
+    fun getGLThread(): GLThread {
+        return glThread!!
     }
 }

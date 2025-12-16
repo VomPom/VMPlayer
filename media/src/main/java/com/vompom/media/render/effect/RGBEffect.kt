@@ -50,21 +50,25 @@ class RGBEffect : BaseEffect() {
         GLES20.glUniform1f(blueLocation, blue)
     }
 
-    fun setRed(value: Float) {
+    fun setRed(value: Float): RGBEffect {
         this.red = value
+        return this
     }
 
-    fun setGreen(value: Float) {
+    fun setGreen(value: Float): RGBEffect {
         this.green = value
+        return this
     }
 
-    fun setBlue(value: Float) {
+    fun setBlue(value: Float): RGBEffect {
         this.blue = value
+        return this
     }
 
-    fun setRGB(r: Float, g: Float, b: Float) {
+    fun setRGB(r: Float, g: Float, b: Float): RGBEffect {
         this.red = r
         this.green = g
         this.blue = b
+        return this
     }
 }

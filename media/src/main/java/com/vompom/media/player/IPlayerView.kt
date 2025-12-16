@@ -1,4 +1,4 @@
-package com.vompom.media.render
+package com.vompom.media.player
 
 import android.util.Size
 

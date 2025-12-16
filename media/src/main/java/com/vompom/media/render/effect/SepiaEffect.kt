@@ -3,7 +3,10 @@ package com.vompom.media.render.effect
 import com.vompom.media.model.TextureInfo
 
 /**
- * 复古（怀旧）滤镜特效
+ *
+ * Created by @juliswang on 2025/12/15 21:14
+ *
+ * @Description 复古（怀旧）滤镜特效
  */
 class SepiaEffect : BaseEffect() {
     override fun getFragmentShaderCode(textureInfo: TextureInfo): String {
