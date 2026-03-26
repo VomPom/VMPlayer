@@ -4,6 +4,7 @@ import android.util.Size
 import com.vompom.media.model.RenderModel
 import com.vompom.media.model.VideoEffectEntity
 import com.vompom.media.render.IRendererEffect
+import com.vompom.media.render.sticker.StickerEffect
 
 /**
  *
@@ -21,4 +22,11 @@ interface IRenderSession {
     // fixme:: 这个接口设计得不太友好，考虑整体结构调整干掉它
     fun attachRenderChain(glThread: IQueueEvent, renderer: IRendererEffect)
     fun flush()
+
+    /** 添加贴纸 */
+    fun addSticker(sticker: StickerEffect)
+    /** 根据 stickerId 移除贴纸 */
+    fun removeSticker(stickerId: Long)
+    /** 移除所有贴纸 */
+    fun clearStickers()
 }

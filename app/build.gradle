@@ -44,5 +44,5 @@ dependencies {
     implementation Deps.androidx.recyclerview
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
 
-    implementation project(':media')
+    implementation project(':vmplayer')
 }

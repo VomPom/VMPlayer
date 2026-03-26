@@ -8,6 +8,7 @@ import com.vompom.media.VMPlayer.Companion.DEFAULT_RENDER_HEIGHT
 import com.vompom.media.VMPlayer.Companion.DEFAULT_RENDER_WIDTH
 import com.vompom.media.model.RenderModel
 import com.vompom.media.model.VideoEffectEntity
+import com.vompom.media.render.sticker.StickerEffect
 
 /**
  *
@@ -60,9 +61,28 @@ class VMRenderSession : IRenderSession {
         }
     }
 
+    override fun addSticker(sticker: StickerEffect) {
+        runInGlThread {
+            renderChain.addSticker(sticker)
+        }
+    }
+
+    override fun removeSticker(stickerId: Long) {
+        runInGlThread {
+            renderChain.removeSticker(stickerId)
+        }
+    }
+
+    override fun clearStickers() {
+        runInGlThread {
+            renderChain.clearStickers()
+        }
+    }
+
     override fun getRenderModel(): RenderModel = RenderModel(
         renderSize,
-        renderChain.getEffectEntities()
+        renderChain.getEffectEntities(),
+        renderChain.cloneStickers()
     )
 
     override fun flush() {

@@ -171,7 +171,8 @@ class Exporter(val segments: List<TrackSegment>, val renderModel: RenderModel) :
         return PlayerRender().apply {
             setEffectGroup(
                 EffectGroup.createEffectGroup(
-                    renderModel.effectList
+                    renderModel.effectList,
+                    renderModel.stickerList
                 )
             )
             initRenderSize(config.outputSize)

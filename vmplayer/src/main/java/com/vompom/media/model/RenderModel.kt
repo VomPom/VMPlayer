@@ -2,6 +2,7 @@ package com.vompom.media.model
 
 import android.util.Size
 import com.vompom.media.render.effect.BaseEffect
+import com.vompom.media.render.sticker.StickerEffect
 
 /**
  *
@@ -13,6 +14,7 @@ import com.vompom.media.render.effect.BaseEffect
 data class RenderModel(
     val renderSize: Size,
     val effectList: List<VideoEffectEntity> = emptyList<VideoEffectEntity>(),
+    val stickerList: List<StickerEffect> = emptyList(),
 )
 
 //todo::未来可以将所有的特效（包括音频/贴纸等）抽象成一个 Entity

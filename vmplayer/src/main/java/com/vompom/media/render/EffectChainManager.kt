@@ -5,6 +5,7 @@ import com.vompom.media.VMPlayer.Companion.DEFAULT_RENDER_HEIGHT
 import com.vompom.media.VMPlayer.Companion.DEFAULT_RENDER_WIDTH
 import com.vompom.media.model.VideoEffectEntity
 import com.vompom.media.render.effect.EffectGroup
+import com.vompom.media.render.sticker.StickerEffect
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
@@ -50,6 +51,38 @@ class EffectChainManager : IEffectChain {
     }
 
     override fun getEffectEntities(): List<VideoEffectEntity> = effectEntities.toList()
+
+    /**
+     * 添加贴纸效果
+     */
+    fun addSticker(sticker: StickerEffect) {
+        sticker.updateRenderViewSize(renderSize)
+        effectGroup?.addSticker(sticker)
+    }
+
+    /**
+     * 根据 stickerId 移除贴纸效果
+     */
+    fun removeSticker(stickerId: Long) {
+        effectGroup?.removeSticker(stickerId)
+    }
+
+    /**
+     * 移除所有贴纸
+     */
+    fun clearStickers() {
+        effectGroup?.clearStickers()
+    }
+
+    /**
+     * 获取当前贴纸数量
+     */
+    fun getStickerCount(): Int = effectGroup?.getStickerCount() ?: 0
+
+    /**
+     * 获取当前所有贴纸的克隆副本（用于导出等需要在新 GL 上下文中重建的场景）
+     */
+    fun cloneStickers(): List<StickerEffect> = effectGroup?.cloneStickers() ?: emptyList()
 }
 
 interface IEffectChain {
