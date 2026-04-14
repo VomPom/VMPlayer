@@ -10,10 +10,11 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.vompom.media.docode.decorder.AudioDecoder
 import com.vompom.media.docode.decorder.VideoDecoder
-import com.vompom.media.docode.track.AudioDecoderTrack
+import com.vompom.media.docode.track.AudioCompositionTrack
 import com.vompom.media.docode.track.VideoDecoderTrack
 import com.vompom.media.export.Exporter
 import com.vompom.media.export.IExporter
+import com.vompom.media.model.AudioMixConfig
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
 import com.vompom.media.player.IPlayerView
@@ -41,6 +42,9 @@ class VMPlayer : IPlayer, Handler.Callback {
     private var renderSize = Size(DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT)
     private var playUs: Long = 0L
     private var playerView: IPlayerView? = null
+    private var audioMixConfig: AudioMixConfig? = null
+    // 持有当前正在使用的 AudioCompositionTrack 引用，用于动态更新混音配置
+    private var currentAudioTrack: AudioCompositionTrack? = null
 
     companion object {
         const val TYPE_STATES: Int = 1
@@ -91,7 +95,8 @@ class VMPlayer : IPlayer, Handler.Callback {
 
     private fun onSurfaceCreate(surface: Surface) {
         val videoTrack = VideoDecoderTrack(segments, surface)
-        val audioTrack = AudioDecoderTrack(segments)
+        val audioTrack = AudioCompositionTrack(segments, audioMixConfig)
+        currentAudioTrack = audioTrack
         videoTrack.setVideoSizeChangeListener { videoSize ->
             playerView?.updateVideoSize(videoSize)
         }
@@ -160,6 +165,18 @@ class VMPlayer : IPlayer, Handler.Callback {
         this.playListener = listener
     }
 
+    override fun setAudioMix(config: AudioMixConfig) {
+        this.audioMixConfig = config
+        // 动态更新正在运行的 AudioCompositionTrack
+        currentAudioTrack?.updateAudioMixConfig(config)
+    }
+
+    override fun removeAudioMix() {
+        this.audioMixConfig = null
+        // 动态清除正在运行的 AudioCompositionTrack 的混音配置
+        currentAudioTrack?.clearAudioMixConfig()
+    }
+
     /**
      * fixme:这里待完善，目前通过 renderSession 作为中间层，获取渲染数据，maybe 有更好的方式
      *
@@ -167,7 +184,7 @@ class VMPlayer : IPlayer, Handler.Callback {
      */
     override fun createExporter(): IExporter {
         val renderModel = renderSession.getRenderModel()
-        return Exporter(segments, renderModel)
+        return Exporter(segments, renderModel, audioMixConfig)
     }
 
     override fun handleMessage(msg: Message): Boolean {

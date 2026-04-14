@@ -13,10 +13,13 @@ import com.vompom.media.IPlayer
 import com.vompom.media.VMPlayer
 import com.vompom.media.export.Exporter.ExportConfig
 import com.vompom.media.export.Exporter.ExportListener
+import com.vompom.media.model.AudioMixConfig
+import com.vompom.media.model.AudioTrackInputConfig
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.EffectType
 import com.vompom.media.model.TimeRange
 import com.vompom.media.model.VideoEffectEntity
+import com.vompom.media.model.VolumeRamp
 import com.vompom.media.render.VMRenderSession
 import com.vompom.media.render.effect.GrayscaleEffect
 import com.vompom.media.render.effect.InvertEffect
@@ -41,12 +44,17 @@ class MainActivity : AppCompatActivity() {
     /** 当前是否正在播放 */
     private var isPlaying = false
 
+    /** 当前是否已添加 BGM */
+    private var isBgmAdded = false
+
     companion object {
         // 功能按钮 ID 常量
         const val ACTION_STOP = "stop"
         const val ACTION_EXPORT = "export"
         const val ACTION_ADD_STICKER = "add_sticker"
         const val ACTION_CLEAR_STICKER = "clear_sticker"
+        const val ACTION_ADD_BGM = "add_bgm"
+        const val ACTION_REMOVE_BGM = "remove_bgm"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -159,7 +167,9 @@ class MainActivity : AppCompatActivity() {
                     ActionItem(ACTION_STOP, "停止"),
                     ActionItem(ACTION_EXPORT, "导出"),
                     ActionItem(ACTION_ADD_STICKER, "添加贴纸"),
-                    ActionItem(ACTION_CLEAR_STICKER, "清除贴纸")
+                    ActionItem(ACTION_CLEAR_STICKER, "清除贴纸"),
+                    ActionItem(ACTION_ADD_BGM, "添加BGM"),
+                    ActionItem(ACTION_REMOVE_BGM, "移除BGM")
                 )
             )
         }
@@ -183,6 +193,8 @@ class MainActivity : AppCompatActivity() {
             ACTION_EXPORT -> startExport()
             ACTION_ADD_STICKER -> addSticker()
             ACTION_CLEAR_STICKER -> clearStickers()
+            ACTION_ADD_BGM -> addBgm()
+            ACTION_REMOVE_BGM -> removeBgm()
         }
     }
 
@@ -290,6 +302,43 @@ class MainActivity : AppCompatActivity() {
     private fun clearStickers() {
         renderSession.clearStickers()
         stickerIds.clear()
+    }
+
+    /**
+     * 添加 BGM：使用 30s.mp4 的音频轨道作为背景音乐
+     * 原始音频降到 40%，BGM 音量 60%，前 2 秒淡入
+     */
+    private fun addBgm() {
+        if (isBgmAdded) return
+
+        val bgmPath = ResUtils.bgm
+        val audioMixConfig = AudioMixConfig().apply {
+            originalVolume = 0.4f
+            addTrack(
+                AudioTrackInputConfig(
+                    trackId = 1,
+                    filePath = bgmPath,
+                    volume = 0.6f,
+                    loop = true,
+                    volumeRamps = listOf(
+                        VolumeRamp(0L, 2_000_000L, 0f, 0.6f) // 前 2 秒淡入
+                    )
+                )
+            )
+        }
+        player.setAudioMix(audioMixConfig)
+        isBgmAdded = true
+        actionAdapter.updateActionText(ACTION_ADD_BGM, "BGM已添加")
+    }
+
+    /**
+     * 移除 BGM，恢复原始音频
+     */
+    private fun removeBgm() {
+        if (!isBgmAdded) return
+        player.removeAudioMix()
+        isBgmAdded = false
+        actionAdapter.updateActionText(ACTION_ADD_BGM, "添加BGM")
     }
 
     override fun onPause() {

@@ -18,7 +18,8 @@ import java.nio.ByteBuffer
  */
 
 class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
-    private lateinit var audioTrack: AudioTrack
+    private var audioTrack: AudioTrack? = null
+    private var ownsAudioTrack = true  // 是否由自己管理 AudioTrack 的生命周期
     private var currentPts = 0L
     private var cnt = 0
 
@@ -26,6 +27,22 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     private var lastDecodedBuffer: ByteBuffer? = null
     private var lastBufferInfo: MediaCodec.BufferInfo? = null
     private var hasNewData = false // 标记是否有新数据
+
+    /**
+     * PCM 数据拦截器：外部可以设置此回调来替换即将写入 AudioTrack 的 PCM 数据
+     * 参数：原始 PCM ByteBuffer 和 BufferInfo
+     * 返回：替换后的 PCM ByteArray，返回 null 则使用原始数据
+     */
+    var pcmInterceptor: ((ByteBuffer, MediaCodec.BufferInfo) -> ByteArray?)? = null
+
+    /**
+     * 设置外部共享的 AudioTrack，避免片段切换时重新创建
+     * 调用此方法后，AudioDecoder 不再管理 AudioTrack 的生命周期
+     */
+    fun setSharedAudioTrack(sharedAudioTrack: AudioTrack) {
+        this.audioTrack = sharedAudioTrack
+        this.ownsAudioTrack = false
+    }
 
     override fun render(buffer: ByteBuffer?, bufferInfo: MediaCodec.BufferInfo) {
         if (buffer != null) {
@@ -40,7 +57,20 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     private fun playFrame(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
         lastDecodedBuffer = buffer
         lastBufferInfo = bufferInfo
-        audioTrack.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
+        hasNewData = true
+
+        val track = audioTrack ?: return
+
+        // 如果有拦截器，先让拦截器处理（用于混音场景）
+        val intercepted = pcmInterceptor?.invoke(buffer, bufferInfo)
+        if (intercepted != null) {
+            // 使用混合后的 PCM 数据播放
+            track.write(intercepted, 0, intercepted.size, AudioTrack.WRITE_BLOCKING)
+        } else {
+            // 使用原始 PCM 数据播放
+            track.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
+        }
+
         currentPts = bufferInfo.presentationTimeUs
         cnt++
         VLog.v("audio pts:${usToS(bufferInfo.presentationTimeUs)}s size:${bufferInfo.size} offset: ${bufferInfo.offset} cnt: $cnt")
@@ -66,9 +96,11 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
 
     override fun onPrepare() {
         if (isExportMode()) {
-
-        } else {
+            // 导出模式不需要 AudioTrack
+        } else if (audioTrack == null) {
+            // 只有没有外部共享 AudioTrack 时才自己创建
             initAudioPlayer()
+            ownsAudioTrack = true
         }
     }
 
@@ -100,7 +132,7 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
             )
             .setBufferSizeInBytes(minBufferSize)
             .build()
-        audioTrack.play()
+        audioTrack?.play()
     }
 
     override fun readSample(targetTimeUs: Long): SampleState {
@@ -132,7 +164,11 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
 
     override fun release() {
         super.release()
-        audioTrack.release()
+        // 只有自己创建的 AudioTrack 才由自己释放
+        if (ownsAudioTrack && audioTrack != null) {
+            audioTrack?.release()
+        }
+        audioTrack = null
     }
 
     override fun decodeType(): IDecoder.DecodeType = IDecoder.DecodeType.Audio

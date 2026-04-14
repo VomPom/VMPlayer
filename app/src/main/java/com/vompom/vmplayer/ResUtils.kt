@@ -23,6 +23,7 @@ object ResUtils {
 
     // 缓存已复制的文件路径（key 为相对于 media 的路径，如 "hok.mp4" 或 "sticker/dog.png"）
     private val copiedFilesCache = mutableMapOf<String, String>()
+
     // 缓存贴纸文件路径列表
     private val stickerPaths = mutableListOf<String>()
     private var isInitialized = false
@@ -165,13 +166,18 @@ object ResUtils {
      */
     fun getFilePath(fileName: String): String? = copiedFilesCache[fileName]
 
+    fun getVideo(fileName: String): String? = getFilePath("videos/$fileName")
+    fun getAudio(fileName: String): String? = getFilePath("audios/$fileName")
+
+
     // 使用 lazy 初始化，只有在调用时才获取路径
-    val testHok: String by lazy { getFilePath("hok.mp4")!! }
-    val testHokV: String by lazy { getFilePath("hok_v.mp4")!! }
-    val testWz: String by lazy { getFilePath("wz.mp4")!! }
-    val video30s: String by lazy { getFilePath("30s.mp4")!! }
-    val video10s: String by lazy { getFilePath("10s.mp4")!! }
-    val h264: String by lazy { getFilePath("h264.h264")!! }
+    val testHok: String by lazy { getVideo("hok.mp4")!! }
+    val testHokV: String by lazy { getVideo("hok_v.mp4")!! }
+    val testWz: String by lazy { getVideo("wz.mp4")!! }
+    val video30s: String by lazy { getVideo("30s.mp4")!! }
+    val video10s: String by lazy { getVideo("10s.mp4")!! }
+
+    val bgm: String by lazy { getAudio("bgm.mp3")!! }
 
     /**
      * 从贴纸文件夹中随机获取一张贴纸的路径

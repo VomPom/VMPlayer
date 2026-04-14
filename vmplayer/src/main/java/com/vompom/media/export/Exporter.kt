@@ -9,6 +9,7 @@ import com.vompom.media.export.encoder.VideoEncoder
 import com.vompom.media.export.reader.AudioReader
 import com.vompom.media.export.reader.IReader
 import com.vompom.media.export.reader.VideoReader
+import com.vompom.media.model.AudioMixConfig
 import com.vompom.media.model.RenderModel
 import com.vompom.media.model.TrackSegment
 import com.vompom.media.render.GLThread
@@ -30,7 +31,11 @@ import java.nio.ByteBuffer
  *
  * @Description 负责协调视频和音频写入 mp4 文件
  */
-class Exporter(val segments: List<TrackSegment>, val renderModel: RenderModel) : IExporter {
+class Exporter(
+    val segments: List<TrackSegment>,
+    val renderModel: RenderModel,
+    val audioMixConfig: AudioMixConfig? = null
+) : IExporter {
     private val exportScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var listener: ExportListener? = null
 
@@ -191,7 +196,7 @@ class Exporter(val segments: List<TrackSegment>, val renderModel: RenderModel) :
      */
     private fun onRenderSurfaceCreate(surface: Surface) {
         videoReader = VideoReader(segments, surface, config.frameRate)
-        audioReader = AudioReader(segments)
+        audioReader = AudioReader(segments, audioMixConfig)
         exportScope.launch {
             readAndWrite(videoReader, videoEncoder, true)
             readAndWrite(audioReader, audioEncoder, false)
