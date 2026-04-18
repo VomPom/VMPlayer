@@ -178,6 +178,7 @@ object ResUtils {
     val video10s: String by lazy { getVideo("10s.mp4")!! }
 
     val bgm: String by lazy { getAudio("bgm.mp3")!! }
+    val bgm2: String by lazy { getAudio("bgm2.mp3")!! }
 
     /**
      * 从贴纸文件夹中随机获取一张贴纸的路径

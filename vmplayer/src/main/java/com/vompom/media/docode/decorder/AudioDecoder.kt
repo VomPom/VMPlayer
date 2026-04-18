@@ -135,6 +135,24 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
         audioTrack?.play()
     }
 
+    companion object {
+        /**
+         * 音频解码重试最大次数，避免无限循环
+         * 正常情况下 MediaCodec 在喂入 2-3 帧后就能产出输出，设置为 30 次作为安全上限
+         */
+        private const val MAX_RETRY_COUNT = 30
+    }
+
+    /**
+     * 音频 readSample 重写：加入 while 循环重试机制
+     *
+     * 与视频不同，音频对连续性要求极高，任何一帧的缺失都会导致听觉上的"卡顿"或"断流"。
+     * 在片段切换后，新的 MediaCodec 刚初始化时，前几次 dequeueOutputBuffer 必然返回
+     * INFO_TRY_AGAIN_LATER（因为解码管线还没有填满），如果像视频那样直接返回 FAILED，
+     * AudioTrack 就会因为没有数据写入而产生静音间隙。
+     *
+     * 因此这里采用 while 循环：持续喂数据 + 取数据，直到拿到有效的 PCM 帧或达到超时上限。
+     */
     override fun readSample(targetTimeUs: Long): SampleState {
         if (isReleased) {
             return SampleState()
@@ -142,16 +160,52 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
         if (isNeedSeek(targetTimeUs)) {
             seek(targetTimeUs)
         }
-        // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
-        if (!isReadSampleDone) {
-            doReadSample()
-        }
 
-        // 从 MediaCodec 队列中获取解码后的数据
-        if (!isDecodeDone) {
-            return renderBuffer { true }
+        var retryCount = 0
+        while (!isReleased && !isDecodeDone) {
+            // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
+            if (!isReadSampleDone) {
+                doReadSample()
+            }
+
+            // 从 MediaCodec 队列中获取解码后的数据
+            val state = renderBuffer { true }
+
+            // 成功拿到有效帧、解码完成、或遇到不可恢复的错误，直接返回
+            if (state.statusCode == IDecoder.SAMPLE_STATE_NORMAL
+                || state.statusCode == IDecoder.SAMPLE_STATE_FINISH
+                || state.statusCode == IDecoder.SAMPLE_STATE_ERROR
+            ) {
+                return state
+            }
+
+            // SAMPLE_STATE_FAILED（即 TRY_AGAIN_LATER）：继续重试
+            retryCount++
+            if (retryCount >= MAX_RETRY_COUNT) {
+                VLog.w("AudioDecoder readSample retry exhausted after $MAX_RETRY_COUNT attempts")
+                return state
+            }
         }
         return SampleState()
+    }
+
+    /**
+     * 音频解码器的片段重置：在 BaseDecoder.resetForNewSegment 基础上，
+     * 额外重置音频特有的状态（PTS、计数器、缓冲区等）
+     *
+     * 优化：音频解码不使用 mirrorExtractor，默认跳过其重置以减少文件 I/O 开销
+     */
+    override fun resetForNewSegment(newSourcePath: String, skipMirrorExtractor: Boolean): Boolean {
+        val success = super.resetForNewSegment(newSourcePath, skipMirrorExtractor = true)
+        if (success) {
+            // 重置音频特有状态
+            currentPts = 0L
+            cnt = 0
+            lastDecodedBuffer = null
+            lastBufferInfo = null
+            hasNewData = false
+        }
+        return success
     }
 
     override fun seek(timeUs: Long): Long {

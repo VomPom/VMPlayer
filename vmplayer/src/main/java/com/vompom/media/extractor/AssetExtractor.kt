@@ -38,6 +38,30 @@ class AssetExtractor : IExtractor {
         extractor.release()
     }
 
+    /**
+     * 重置数据源：释放旧的 MediaExtractor 并创建新实例
+     *
+     * 与 stop() + setDataSource() 的区别：
+     * stop() 调用 MediaExtractor.release() 后，实例不可再使用。
+     * 此方法会创建全新的 MediaExtractor 实例，确保后续操作正常。
+     *
+     * @param path 新的数据源路径
+     */
+    fun resetDataSource(path: String) {
+        try {
+            extractor.release()
+        } catch (_: Exception) {
+            // 忽略 release 异常
+        }
+        extractor = MediaExtractor()
+        mediaFormat = null
+        trackIndex = -1
+        currentSampleTime = 0L
+        currentSampleFlags = 0
+        durationUs = 0L
+        extractor.setDataSource(path)
+    }
+
     override fun seek(timeUs: Long): Long {
         // todo:: seek with accurate position...
         extractor.seekTo(timeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)

@@ -33,13 +33,25 @@ abstract class BaseDecoderTrack : IDecoderTrack {
 
     protected fun currentSegment(): TrackSegment = segmentList[currentSegmentIndex]
 
-    protected fun releaseCurrentDecoder() {
+    protected fun releaseCurrentDecoder(async: Boolean = false) {
         if (currentDecoder == null) {
             return
         }
-        synchronized(decoderLock) {
-            currentDecoder?.apply {
-                release()
+        if (async) {
+            // 异步释放：将旧 decoder 的 release 放到后台线程，不阻塞音频线程
+            // 参考 TAVFoundation 的 ThreadPool.execute() 模式
+            val decoderToRelease = currentDecoder
+            currentDecoder = null
+            Thread {
+                synchronized(decoderLock) {
+                    decoderToRelease?.release()
+                }
+            }.start()
+        } else {
+            synchronized(decoderLock) {
+                currentDecoder?.apply {
+                    release()
+                }
             }
         }
     }
@@ -55,8 +67,8 @@ abstract class BaseDecoderTrack : IDecoderTrack {
         currentDecoder?.seek(currentSegment().sourceRange.startUs)
     }
 
-    fun doCreateDecoder() {
-        releaseCurrentDecoder()
+    fun doCreateDecoder(asyncRelease: Boolean = false) {
+        releaseCurrentDecoder(asyncRelease)
         val segment = currentSegment()
         synchronized(decoderLock) {
             currentDecoder = createDecoder(segment)

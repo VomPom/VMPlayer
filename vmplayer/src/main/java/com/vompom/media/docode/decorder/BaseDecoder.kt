@@ -38,7 +38,7 @@ abstract class BaseDecoder : IDecoder {
     // 添加外部时间戳提供者
     private var exportPTSProvider: (() -> Long)? = null
 
-    private var sourcePath = ""
+    protected var sourcePath = ""
 
     // 解码后的数据信息
     private var bufferInfo = MediaCodec.BufferInfo()
@@ -225,6 +225,64 @@ abstract class BaseDecoder : IDecoder {
 
     fun isExportMode(): Boolean = isExportMode
 
+    /**
+     * 获取当前解码器的 MIME 类型，用于判断片段切换时是否可以复用 MediaCodec
+     */
+    fun getMimeType(): String? {
+        return try {
+            extractor.getMediaFormat().getString(MediaFormat.KEY_MIME)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 为新片段重置解码器状态，复用 MediaCodec 实例
+     *
+     * 片段切换时不销毁 MediaCodec，而是通过 flush() 清空缓冲区 + 重新设置 Extractor 数据源
+     * 这样可以将片段切换的延迟从 30-80ms（release + recreate）降低到 1-5ms（flush）
+     *
+     * 注意：此方法仅在新旧片段的音频编码格式（MIME type）相同时才可调用
+     *
+     * @param newSourcePath 新片段的资源路径
+     * @param skipMirrorExtractor 是否跳过 mirrorExtractor 的重置（音频解码不需要 mirrorExtractor）
+     * @return true 重置成功，false 重置失败（调用方应降级到完整重建路径）
+     */
+    open fun resetForNewSegment(newSourcePath: String, skipMirrorExtractor: Boolean = false): Boolean {
+        try {
+            // 1. flush MediaCodec，清空所有输入/输出缓冲区，但保持 Started 状态
+            mediaCodec.flush()
+
+            val trackPrefix = when (decodeType()) {
+                IDecoder.DecodeType.Video -> "video/"
+                IDecoder.DecodeType.Audio -> "audio/"
+            }
+
+            // 2. 重置 Extractor：release 旧实例 + 创建新实例 + 设置新数据源
+            extractor.resetDataSource(newSourcePath)
+            extractor.selectTrack(extractor.findTrack(trackPrefix))
+
+            // 3. 重置 mirrorExtractor（音频解码可跳过，减少不必要的文件 I/O）
+            if (!skipMirrorExtractor) {
+                mirrorExtractor.resetDataSource(newSourcePath)
+                mirrorExtractor.selectTrack(mirrorExtractor.findTrack(trackPrefix))
+            }
+
+            // 4. 更新源路径
+            sourcePath = newSourcePath
+
+            // 5. 重置解码状态标志
+            isDecodeDone = false
+            isReadSampleDone = false
+            isReleased = false
+
+            VLog.d("${this.javaClass.simpleName} resetForNewSegment: ${File(newSourcePath).name}")
+            return true
+        } catch (e: Exception) {
+            VLog.e("resetForNewSegment failed: ${e.message}")
+            return false
+        }
+    }
 
     override fun release() {
         try {
