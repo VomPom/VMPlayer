@@ -80,9 +80,13 @@ class PlayerRender() : IRendererEffect {
         effectGroup?.updateRenderViewSize(size)
     }
 
-    fun onDrawFrame() {
-        awaitNewImage()
+    /**
+     * @return true 表示有新帧被渲染，false 表示超时无新帧（但仍会执行 handleEffect 以保持特效更新）
+     */
+    fun onDrawFrame(): Boolean {
+        val hasNewFrame = awaitNewImage()
         handleEffect()
+        return hasNewFrame
     }
 
     private fun handleEffect() {
@@ -99,8 +103,9 @@ class PlayerRender() : IRendererEffect {
     /**
      * 不需要每次都执行 updateTexImage，需要在 onFrameAvailable 通知之后再执行 updateTexImage 进行 openGL 渲染
      *
+     * @return true 表示有新帧可用，false 表示超时无新帧
      */
-    private fun awaitNewImage(timeoutMs: Long = 3000, tryPerTimeMs: Int = 50) {
+    private fun awaitNewImage(timeoutMs: Long = 3000, tryPerTimeMs: Int = 50): Boolean {
         var needRetryTimes = ceil((timeoutMs * 1f / tryPerTimeMs).toDouble()).toInt()
         synchronized(frameSyncObject) {
             while (!frameAvailable && needRetryTimes > 0) {
@@ -115,7 +120,7 @@ class PlayerRender() : IRendererEffect {
             }
             frameAvailable = false
             if (needRetryTimes == 0) {
-                return
+                return false
             }
         }
         try {
@@ -123,6 +128,7 @@ class PlayerRender() : IRendererEffect {
         } catch (e: Exception) {
             VLog.e("Error updating TexImage:${e.message}")
         }
+        return true
     }
 
     fun release() {

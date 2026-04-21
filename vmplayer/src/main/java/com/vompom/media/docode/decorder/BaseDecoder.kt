@@ -126,16 +126,9 @@ abstract class BaseDecoder : IDecoder {
         try {
             // 将数据压入解码器输入缓冲
             if (bufferSize >= 0) {
-                // ⚠️由于每个资源解码使用的单独的 MediaCodec ，在导出的时候对应的 Surface 来自于 编码 MediaCodec
-                // 那么需要解码 MediaCodec queueInputBuffer 的时候对应的 presentationTimeUs 持续增大。
-                // 播放因为使用的 TextureView/SurfaceView 创建的 Surface 则不受影响
-
-                // presentationTimeUs 的主要作用是为解码后的帧排序，并告知编码器该帧在原始时间轴上的位置。
-                val presentationTimeUs = if (isExportMode) {
-                    exportPTSProvider?.invoke() ?: 0L
-                } else {
-                    extractor.getSampleTime()
-                }
+                // presentationTimeUs：输入端始终使用原始的 extractor 时间戳
+                // 导出模式的 PTS 重映射在输出端（renderBuffer）完成，确保只有成功输出的帧才消耗 PTS
+                val presentationTimeUs = extractor.getSampleTime()
                 mediaCodec.queueInputBuffer(
                     inputBufferId,
                     0,
@@ -143,7 +136,6 @@ abstract class BaseDecoder : IDecoder {
                     presentationTimeUs,
                     extractor.getSampleFlags()
                 )
-                // 导出模式的时间推进由外部控制
             } else {
                 // 结束,传递 end-of-stream 标志
                 mediaCodec.queueInputBuffer(
@@ -183,7 +175,21 @@ abstract class BaseDecoder : IDecoder {
             val outputBuffer: ByteBuffer?
             if (outputIndex >= 0) {
                 outputBuffer = mediaCodec.getOutputBuffer(outputIndex)
-                bufferTime = bufferInfo.presentationTimeUs
+
+                // 先保存原始 PTS 用于 renderCheck 比较（与片段内源时间在同一时间域）
+                val originalPts = bufferInfo.presentationTimeUs
+
+                // 导出模式：在输出端重映射 PTS，确保只有成功输出的帧才消耗全局递增的 PTS
+                // 这修复了之前在输入端（queueInputBuffer）递增 PTS 导致的问题：
+                // 当解码器需要多次输入才能产出一帧时（视频 B帧、音频重试），PTS 被过度消耗
+                if (isExportMode) {
+                    val exportPts = exportPTSProvider?.invoke() ?: originalPts
+                    bufferInfo.presentationTimeUs = exportPts
+                }
+
+                // bufferTime 使用原始 PTS，确保 renderCheck 的比较在正确的时间域内
+                // bufferInfo.presentationTimeUs 使用导出 PTS，传给 render() → 编码器
+                bufferTime = originalPts
                 render(outputBuffer, bufferInfo)
                 val needRender = renderCheck(bufferTime)
                 mediaCodec.releaseOutputBuffer(outputIndex, needRender)

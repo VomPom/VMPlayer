@@ -162,6 +162,8 @@ class Exporter(
             null,               // 导出场景下不需要预览 View，仅使用编码 Surface
             config.outputSize
         )
+        // 设置导出帧时长（纳秒），用于 eglPresentationTimeANDROID 生成正确的 PTS
+        glThread.exportFrameDurationNanos = (1_000_000_000L / config.frameRate)
         glThread.start()
 
     }

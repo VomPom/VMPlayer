@@ -47,6 +47,9 @@ class MainActivity : AppCompatActivity() {
     /** 当前是否已添加 BGM */
     private var isBgmAdded = false
 
+    /** 当前是否正在拖动进度条，拖动期间不更新进度条位置 */
+    private var isSeeking = false
+
     companion object {
         // 功能按钮 ID 常量
         const val ACTION_STOP = "stop"
@@ -109,16 +112,28 @@ class MainActivity : AppCompatActivity() {
     private fun initSeekBar() {
         binding.playProgress.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                // 简化处理
+                if (fromUser) {
+                    // 将进度百分比转换为播放时间（微秒）
+                    val duration = player.duration()
+                    val targetUs = (progress.toLong() * duration) / 100
+                    player.seekTo(targetUs)
+                }
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isSeeking = true
                 player.pause()
                 isPlaying = false
                 updatePlayPauseIcon()
             }
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                isSeeking = false
+                // 松手后从当前拖动位置开始播放
+                val progress = seekBar?.progress ?: 0
+                val duration = player.duration()
+                val targetUs = (progress.toLong() * duration) / 100
+                player.seekTo(targetUs)
                 player.play()
                 isPlaying = true
                 updatePlayPauseIcon()
@@ -231,13 +246,16 @@ class MainActivity : AppCompatActivity() {
                     val totalTime = formatTimeFromUs(playerDurationUs)
                     binding.tvTime.text = "$currentTime / $totalTime"
 
-                    val progressPercent = if (playerDurationUs > 0) {
-                        ((currentDurationUs.toFloat() / playerDurationUs) * 100).toInt()
-                    } else {
-                        0
+                    // 拖动进度条期间不更新进度条位置，避免回调覆盖用户拖动的位置
+                    if (!isSeeking) {
+                        val progressPercent = if (playerDurationUs > 0) {
+                            ((currentDurationUs.toFloat() / playerDurationUs) * 100).toInt()
+                        } else {
+                            0
+                        }
+                        binding.playProgress.progress = progressPercent
+                        binding.playProgress.max = 100
                     }
-                    binding.playProgress.progress = progressPercent
-                    binding.playProgress.max = 100
                 }
             }
         })
@@ -311,18 +329,25 @@ class MainActivity : AppCompatActivity() {
     private fun addBgm() {
         if (isBgmAdded) return
 
-        val bgmPath = ResUtils.bgm
         val audioMixConfig = AudioMixConfig().apply {
             originalVolume = 0.4f
             addTrack(
                 AudioTrackInputConfig(
                     trackId = 1,
-                    filePath = bgmPath,
-                    volume = 0.6f,
+                    filePath = ResUtils.bgm2,
+                    volume = 0.4f,
                     loop = true,
                     volumeRamps = listOf(
                         VolumeRamp(0L, 2_000_000L, 0f, 0.6f) // 前 2 秒淡入
                     )
+                )
+            )
+            addTrack(
+                AudioTrackInputConfig(
+                    trackId = 2,
+                    filePath = ResUtils.bgm,
+                    volume = 0.5f,
+                    loop = true
                 )
             )
         }

@@ -48,6 +48,12 @@ class GLThread : Thread, IQueueEvent {
     private var hasEGLSurface = false       // 标记的是 OpenGL 的 Surface
     private var haveEglContext = false
 
+    // 导出模式下的帧计数器，用于生成单调递增的 PTS
+    private var exportFrameCount = 0L
+
+    // 导出模式下每帧的时长（纳秒），由外部设置
+    var exportFrameDurationNanos = 33_333_333L  // 默认 30fps
+
     private val glThreadObject: Object
 
     override fun run() {
@@ -93,8 +99,20 @@ class GLThread : Thread, IQueueEvent {
 
                 if ((hasViewSurface || isExportMode()) && haveEglContext && hasEGLSurface) {
                     try {
-                        renderer.onDrawFrame()
-                        eglHelper.swap()
+                        if (isExportMode()) {
+                            // 导出模式：只有当有新帧时才渲染、设置 PTS 和 swap
+                            // 避免 awaitNewImage 超时后渲染重复帧导致视频时长超过实际内容时长
+                            if (renderer.onDrawFrame()) {
+                                val ptsNanos = exportFrameCount * exportFrameDurationNanos
+                                eglHelper.setPresentationTime(ptsNanos)
+                                exportFrameCount++
+                                eglHelper.swap()
+                            }
+                        } else {
+                            // 预览模式：始终渲染和 swap（保持原有行为）
+                            renderer.onDrawFrame()
+                            eglHelper.swap()
+                        }
                     } catch (e: Exception) {
                         VLog.e("Error during rendering: ${e.message}")
                     }
