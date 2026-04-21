@@ -38,7 +38,7 @@ abstract class BaseDecoder : IDecoder {
     // 添加外部时间戳提供者
     private var exportPTSProvider: (() -> Long)? = null
 
-    private var sourcePath = ""
+    protected var sourcePath = ""
 
     // 解码后的数据信息
     private var bufferInfo = MediaCodec.BufferInfo()
@@ -126,16 +126,9 @@ abstract class BaseDecoder : IDecoder {
         try {
             // 将数据压入解码器输入缓冲
             if (bufferSize >= 0) {
-                // ⚠️由于每个资源解码使用的单独的 MediaCodec ，在导出的时候对应的 Surface 来自于 编码 MediaCodec
-                // 那么需要解码 MediaCodec queueInputBuffer 的时候对应的 presentationTimeUs 持续增大。
-                // 播放因为使用的 TextureView/SurfaceView 创建的 Surface 则不受影响
-
-                // presentationTimeUs 的主要作用是为解码后的帧排序，并告知编码器该帧在原始时间轴上的位置。
-                val presentationTimeUs = if (isExportMode) {
-                    exportPTSProvider?.invoke() ?: 0L
-                } else {
-                    extractor.getSampleTime()
-                }
+                // presentationTimeUs：输入端始终使用原始的 extractor 时间戳
+                // 导出模式的 PTS 重映射在输出端（renderBuffer）完成，确保只有成功输出的帧才消耗 PTS
+                val presentationTimeUs = extractor.getSampleTime()
                 mediaCodec.queueInputBuffer(
                     inputBufferId,
                     0,
@@ -143,7 +136,6 @@ abstract class BaseDecoder : IDecoder {
                     presentationTimeUs,
                     extractor.getSampleFlags()
                 )
-                // 导出模式的时间推进由外部控制
             } else {
                 // 结束,传递 end-of-stream 标志
                 mediaCodec.queueInputBuffer(
@@ -183,7 +175,21 @@ abstract class BaseDecoder : IDecoder {
             val outputBuffer: ByteBuffer?
             if (outputIndex >= 0) {
                 outputBuffer = mediaCodec.getOutputBuffer(outputIndex)
-                bufferTime = bufferInfo.presentationTimeUs
+
+                // 先保存原始 PTS 用于 renderCheck 比较（与片段内源时间在同一时间域）
+                val originalPts = bufferInfo.presentationTimeUs
+
+                // 导出模式：在输出端重映射 PTS，确保只有成功输出的帧才消耗全局递增的 PTS
+                // 这修复了之前在输入端（queueInputBuffer）递增 PTS 导致的问题：
+                // 当解码器需要多次输入才能产出一帧时（视频 B帧、音频重试），PTS 被过度消耗
+                if (isExportMode) {
+                    val exportPts = exportPTSProvider?.invoke() ?: originalPts
+                    bufferInfo.presentationTimeUs = exportPts
+                }
+
+                // bufferTime 使用原始 PTS，确保 renderCheck 的比较在正确的时间域内
+                // bufferInfo.presentationTimeUs 使用导出 PTS，传给 render() → 编码器
+                bufferTime = originalPts
                 render(outputBuffer, bufferInfo)
                 val needRender = renderCheck(bufferTime)
                 mediaCodec.releaseOutputBuffer(outputIndex, needRender)
@@ -225,6 +231,64 @@ abstract class BaseDecoder : IDecoder {
 
     fun isExportMode(): Boolean = isExportMode
 
+    /**
+     * 获取当前解码器的 MIME 类型，用于判断片段切换时是否可以复用 MediaCodec
+     */
+    fun getMimeType(): String? {
+        return try {
+            extractor.getMediaFormat().getString(MediaFormat.KEY_MIME)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 为新片段重置解码器状态，复用 MediaCodec 实例
+     *
+     * 片段切换时不销毁 MediaCodec，而是通过 flush() 清空缓冲区 + 重新设置 Extractor 数据源
+     * 这样可以将片段切换的延迟从 30-80ms（release + recreate）降低到 1-5ms（flush）
+     *
+     * 注意：此方法仅在新旧片段的音频编码格式（MIME type）相同时才可调用
+     *
+     * @param newSourcePath 新片段的资源路径
+     * @param skipMirrorExtractor 是否跳过 mirrorExtractor 的重置（音频解码不需要 mirrorExtractor）
+     * @return true 重置成功，false 重置失败（调用方应降级到完整重建路径）
+     */
+    open fun resetForNewSegment(newSourcePath: String, skipMirrorExtractor: Boolean = false): Boolean {
+        try {
+            // 1. flush MediaCodec，清空所有输入/输出缓冲区，但保持 Started 状态
+            mediaCodec.flush()
+
+            val trackPrefix = when (decodeType()) {
+                IDecoder.DecodeType.Video -> "video/"
+                IDecoder.DecodeType.Audio -> "audio/"
+            }
+
+            // 2. 重置 Extractor：release 旧实例 + 创建新实例 + 设置新数据源
+            extractor.resetDataSource(newSourcePath)
+            extractor.selectTrack(extractor.findTrack(trackPrefix))
+
+            // 3. 重置 mirrorExtractor（音频解码可跳过，减少不必要的文件 I/O）
+            if (!skipMirrorExtractor) {
+                mirrorExtractor.resetDataSource(newSourcePath)
+                mirrorExtractor.selectTrack(mirrorExtractor.findTrack(trackPrefix))
+            }
+
+            // 4. 更新源路径
+            sourcePath = newSourcePath
+
+            // 5. 重置解码状态标志
+            isDecodeDone = false
+            isReadSampleDone = false
+            isReleased = false
+
+            VLog.d("${this.javaClass.simpleName} resetForNewSegment: ${File(newSourcePath).name}")
+            return true
+        } catch (e: Exception) {
+            VLog.e("resetForNewSegment failed: ${e.message}")
+            return false
+        }
+    }
 
     override fun release() {
         try {

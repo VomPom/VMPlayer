@@ -13,10 +13,13 @@ import com.vompom.media.IPlayer
 import com.vompom.media.VMPlayer
 import com.vompom.media.export.Exporter.ExportConfig
 import com.vompom.media.export.Exporter.ExportListener
+import com.vompom.media.model.AudioMixConfig
+import com.vompom.media.model.AudioTrackInputConfig
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.EffectType
 import com.vompom.media.model.TimeRange
 import com.vompom.media.model.VideoEffectEntity
+import com.vompom.media.model.VolumeRamp
 import com.vompom.media.render.VMRenderSession
 import com.vompom.media.render.effect.GrayscaleEffect
 import com.vompom.media.render.effect.InvertEffect
@@ -41,12 +44,20 @@ class MainActivity : AppCompatActivity() {
     /** 当前是否正在播放 */
     private var isPlaying = false
 
+    /** 当前是否已添加 BGM */
+    private var isBgmAdded = false
+
+    /** 当前是否正在拖动进度条，拖动期间不更新进度条位置 */
+    private var isSeeking = false
+
     companion object {
         // 功能按钮 ID 常量
         const val ACTION_STOP = "stop"
         const val ACTION_EXPORT = "export"
         const val ACTION_ADD_STICKER = "add_sticker"
         const val ACTION_CLEAR_STICKER = "clear_sticker"
+        const val ACTION_ADD_BGM = "add_bgm"
+        const val ACTION_REMOVE_BGM = "remove_bgm"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,16 +112,28 @@ class MainActivity : AppCompatActivity() {
     private fun initSeekBar() {
         binding.playProgress.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                // 简化处理
+                if (fromUser) {
+                    // 将进度百分比转换为播放时间（微秒）
+                    val duration = player.duration()
+                    val targetUs = (progress.toLong() * duration) / 100
+                    player.seekTo(targetUs)
+                }
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isSeeking = true
                 player.pause()
                 isPlaying = false
                 updatePlayPauseIcon()
             }
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                isSeeking = false
+                // 松手后从当前拖动位置开始播放
+                val progress = seekBar?.progress ?: 0
+                val duration = player.duration()
+                val targetUs = (progress.toLong() * duration) / 100
+                player.seekTo(targetUs)
                 player.play()
                 isPlaying = true
                 updatePlayPauseIcon()
@@ -159,7 +182,9 @@ class MainActivity : AppCompatActivity() {
                     ActionItem(ACTION_STOP, "停止"),
                     ActionItem(ACTION_EXPORT, "导出"),
                     ActionItem(ACTION_ADD_STICKER, "添加贴纸"),
-                    ActionItem(ACTION_CLEAR_STICKER, "清除贴纸")
+                    ActionItem(ACTION_CLEAR_STICKER, "清除贴纸"),
+                    ActionItem(ACTION_ADD_BGM, "添加BGM"),
+                    ActionItem(ACTION_REMOVE_BGM, "移除BGM")
                 )
             )
         }
@@ -183,6 +208,8 @@ class MainActivity : AppCompatActivity() {
             ACTION_EXPORT -> startExport()
             ACTION_ADD_STICKER -> addSticker()
             ACTION_CLEAR_STICKER -> clearStickers()
+            ACTION_ADD_BGM -> addBgm()
+            ACTION_REMOVE_BGM -> removeBgm()
         }
     }
 
@@ -219,13 +246,16 @@ class MainActivity : AppCompatActivity() {
                     val totalTime = formatTimeFromUs(playerDurationUs)
                     binding.tvTime.text = "$currentTime / $totalTime"
 
-                    val progressPercent = if (playerDurationUs > 0) {
-                        ((currentDurationUs.toFloat() / playerDurationUs) * 100).toInt()
-                    } else {
-                        0
+                    // 拖动进度条期间不更新进度条位置，避免回调覆盖用户拖动的位置
+                    if (!isSeeking) {
+                        val progressPercent = if (playerDurationUs > 0) {
+                            ((currentDurationUs.toFloat() / playerDurationUs) * 100).toInt()
+                        } else {
+                            0
+                        }
+                        binding.playProgress.progress = progressPercent
+                        binding.playProgress.max = 100
                     }
-                    binding.playProgress.progress = progressPercent
-                    binding.playProgress.max = 100
                 }
             }
         })
@@ -290,6 +320,50 @@ class MainActivity : AppCompatActivity() {
     private fun clearStickers() {
         renderSession.clearStickers()
         stickerIds.clear()
+    }
+
+    /**
+     * 添加 BGM：使用 30s.mp4 的音频轨道作为背景音乐
+     * 原始音频降到 40%，BGM 音量 60%，前 2 秒淡入
+     */
+    private fun addBgm() {
+        if (isBgmAdded) return
+
+        val audioMixConfig = AudioMixConfig().apply {
+            originalVolume = 0.4f
+            addTrack(
+                AudioTrackInputConfig(
+                    trackId = 1,
+                    filePath = ResUtils.bgm2,
+                    volume = 0.4f,
+                    loop = true,
+                    volumeRamps = listOf(
+                        VolumeRamp(0L, 2_000_000L, 0f, 0.6f) // 前 2 秒淡入
+                    )
+                )
+            )
+            addTrack(
+                AudioTrackInputConfig(
+                    trackId = 2,
+                    filePath = ResUtils.bgm,
+                    volume = 0.5f,
+                    loop = true
+                )
+            )
+        }
+        player.setAudioMix(audioMixConfig)
+        isBgmAdded = true
+        actionAdapter.updateActionText(ACTION_ADD_BGM, "BGM已添加")
+    }
+
+    /**
+     * 移除 BGM，恢复原始音频
+     */
+    private fun removeBgm() {
+        if (!isBgmAdded) return
+        player.removeAudioMix()
+        isBgmAdded = false
+        actionAdapter.updateActionText(ACTION_ADD_BGM, "添加BGM")
     }
 
     override fun onPause() {

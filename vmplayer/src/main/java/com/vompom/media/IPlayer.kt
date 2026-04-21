@@ -2,6 +2,7 @@ package com.vompom.media
 
 import android.util.Size
 import com.vompom.media.export.IExporter
+import com.vompom.media.model.AudioMixConfig
 import com.vompom.media.model.ClipAsset
 
 /**
@@ -23,6 +24,18 @@ interface IPlayer {
     fun setRenderSize(size: Size)
     fun setPlayerListener(listener: PlayerListener)
     fun createExporter(): IExporter
+
+    /**
+     * 设置多轨道音频混音配置
+     * @param config 混音配置，包含所有附加音频轨道的参数
+     */
+    fun setAudioMix(config: AudioMixConfig)
+
+    /**
+     * 移除音频混音配置，恢复只播放原始音频
+     */
+    fun removeAudioMix()
+
     interface PlayerListener {
         fun onPositionChanged(currentDurationUs: Long, playerDurationUs: Long)
     }

@@ -18,7 +18,8 @@ import java.nio.ByteBuffer
  */
 
 class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
-    private lateinit var audioTrack: AudioTrack
+    private var audioTrack: AudioTrack? = null
+    private var ownsAudioTrack = true  // 是否由自己管理 AudioTrack 的生命周期
     private var currentPts = 0L
     private var cnt = 0
 
@@ -26,6 +27,22 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     private var lastDecodedBuffer: ByteBuffer? = null
     private var lastBufferInfo: MediaCodec.BufferInfo? = null
     private var hasNewData = false // 标记是否有新数据
+
+    /**
+     * PCM 数据拦截器：外部可以设置此回调来替换即将写入 AudioTrack 的 PCM 数据
+     * 参数：原始 PCM ByteBuffer 和 BufferInfo
+     * 返回：替换后的 PCM ByteArray，返回 null 则使用原始数据
+     */
+    var pcmInterceptor: ((ByteBuffer, MediaCodec.BufferInfo) -> ByteArray?)? = null
+
+    /**
+     * 设置外部共享的 AudioTrack，避免片段切换时重新创建
+     * 调用此方法后，AudioDecoder 不再管理 AudioTrack 的生命周期
+     */
+    fun setSharedAudioTrack(sharedAudioTrack: AudioTrack) {
+        this.audioTrack = sharedAudioTrack
+        this.ownsAudioTrack = false
+    }
 
     override fun render(buffer: ByteBuffer?, bufferInfo: MediaCodec.BufferInfo) {
         if (buffer != null) {
@@ -40,7 +57,20 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
     private fun playFrame(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
         lastDecodedBuffer = buffer
         lastBufferInfo = bufferInfo
-        audioTrack.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
+        hasNewData = true
+
+        val track = audioTrack ?: return
+
+        // 如果有拦截器，先让拦截器处理（用于混音场景）
+        val intercepted = pcmInterceptor?.invoke(buffer, bufferInfo)
+        if (intercepted != null) {
+            // 使用混合后的 PCM 数据播放
+            track.write(intercepted, 0, intercepted.size, AudioTrack.WRITE_BLOCKING)
+        } else {
+            // 使用原始 PCM 数据播放
+            track.write(buffer, bufferInfo.size, AudioTrack.WRITE_BLOCKING)
+        }
+
         currentPts = bufferInfo.presentationTimeUs
         cnt++
         VLog.v("audio pts:${usToS(bufferInfo.presentationTimeUs)}s size:${bufferInfo.size} offset: ${bufferInfo.offset} cnt: $cnt")
@@ -66,9 +96,11 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
 
     override fun onPrepare() {
         if (isExportMode()) {
-
-        } else {
+            // 导出模式不需要 AudioTrack
+        } else if (audioTrack == null) {
+            // 只有没有外部共享 AudioTrack 时才自己创建
             initAudioPlayer()
+            ownsAudioTrack = true
         }
     }
 
@@ -100,9 +132,27 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
             )
             .setBufferSizeInBytes(minBufferSize)
             .build()
-        audioTrack.play()
+        audioTrack?.play()
     }
 
+    companion object {
+        /**
+         * 音频解码重试最大次数，避免无限循环
+         * 正常情况下 MediaCodec 在喂入 2-3 帧后就能产出输出，设置为 30 次作为安全上限
+         */
+        private const val MAX_RETRY_COUNT = 30
+    }
+
+    /**
+     * 音频 readSample 重写：加入 while 循环重试机制
+     *
+     * 与视频不同，音频对连续性要求极高，任何一帧的缺失都会导致听觉上的"卡顿"或"断流"。
+     * 在片段切换后，新的 MediaCodec 刚初始化时，前几次 dequeueOutputBuffer 必然返回
+     * INFO_TRY_AGAIN_LATER（因为解码管线还没有填满），如果像视频那样直接返回 FAILED，
+     * AudioTrack 就会因为没有数据写入而产生静音间隙。
+     *
+     * 因此这里采用 while 循环：持续喂数据 + 取数据，直到拿到有效的 PCM 帧或达到超时上限。
+     */
     override fun readSample(targetTimeUs: Long): SampleState {
         if (isReleased) {
             return SampleState()
@@ -110,16 +160,52 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
         if (isNeedSeek(targetTimeUs)) {
             seek(targetTimeUs)
         }
-        // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
-        if (!isReadSampleDone) {
-            doReadSample()
-        }
 
-        // 从 MediaCodec 队列中获取解码后的数据
-        if (!isDecodeDone) {
-            return renderBuffer { true }
+        var retryCount = 0
+        while (!isReleased && !isDecodeDone) {
+            // 向 MediaCodec 添加解码的数据，在没有 EOS 之前一直添加
+            if (!isReadSampleDone) {
+                doReadSample()
+            }
+
+            // 从 MediaCodec 队列中获取解码后的数据
+            val state = renderBuffer { true }
+
+            // 成功拿到有效帧、解码完成、或遇到不可恢复的错误，直接返回
+            if (state.statusCode == IDecoder.SAMPLE_STATE_NORMAL
+                || state.statusCode == IDecoder.SAMPLE_STATE_FINISH
+                || state.statusCode == IDecoder.SAMPLE_STATE_ERROR
+            ) {
+                return state
+            }
+
+            // SAMPLE_STATE_FAILED（即 TRY_AGAIN_LATER）：继续重试
+            retryCount++
+            if (retryCount >= MAX_RETRY_COUNT) {
+                VLog.w("AudioDecoder readSample retry exhausted after $MAX_RETRY_COUNT attempts")
+                return state
+            }
         }
         return SampleState()
+    }
+
+    /**
+     * 音频解码器的片段重置：在 BaseDecoder.resetForNewSegment 基础上，
+     * 额外重置音频特有的状态（PTS、计数器、缓冲区等）
+     *
+     * 优化：音频解码不使用 mirrorExtractor，默认跳过其重置以减少文件 I/O 开销
+     */
+    override fun resetForNewSegment(newSourcePath: String, skipMirrorExtractor: Boolean): Boolean {
+        val success = super.resetForNewSegment(newSourcePath, skipMirrorExtractor = true)
+        if (success) {
+            // 重置音频特有状态
+            currentPts = 0L
+            cnt = 0
+            lastDecodedBuffer = null
+            lastBufferInfo = null
+            hasNewData = false
+        }
+        return success
     }
 
     override fun seek(timeUs: Long): Long {
@@ -132,7 +218,11 @@ class AudioDecoder(asset: Asset) : BaseDecoder(asset) {
 
     override fun release() {
         super.release()
-        audioTrack.release()
+        // 只有自己创建的 AudioTrack 才由自己释放
+        if (ownsAudioTrack && audioTrack != null) {
+            audioTrack?.release()
+        }
+        audioTrack = null
     }
 
     override fun decodeType(): IDecoder.DecodeType = IDecoder.DecodeType.Audio

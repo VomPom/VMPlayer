@@ -1,4 +1,29 @@
-# Android 视频播放器项目 (VMPlayer)
+# VMPlayer
+
+> 这是一个 **个人学习项目**，是我在音视频播放器方向长期研究、动手实践与经验沉淀的产物。
+>
+> 初衷不是造一个能对标 ExoPlayer / IJKPlayer 的生产级播放器，是把自己对 **MediaCodec 编解码、OpenGL ES 渲染管线、音画同步、时间轴剪辑、特效链、导出复用渲染链** 等核心问题的理解，一步步用代码落地，形成一个可复盘、可扩展的轻量级 Android 媒体框架。
+>
+---
+
+## 已实现的能力
+
+- **多片段顺序播放**：基于 `TrackSegment` 时间轴，任意 `ClipAsset` 列表拼接播放
+- **音视频解码与同步**：独立的 `VideoDecoder` / `AudioDecoder`，由 `AVSyncManager` 做音画同步
+- **Seek 支持**：跨片段 seek、快速拖动、seek 后音画同步
+- **OpenGL ES 渲染管线**：自建 `EglHelper` + `GLThread` + `PlayerRender`，解耦于系统 `GLSurfaceView`
+- **特效链系统**（`EffectChainManager`）：多特效串联、动态增删、顺序可控
+  - 内置滤镜：灰度、复古（Sepia）、反相、RGB 调整
+  - 内置特效：贴纸（`StickerEffect`，支持位置、尺寸、透明度）
+- **多轨道音频混音**（`AudioCompositor` + `AudioMixer`）
+  - 原始音频 + 多路 BGM 叠加
+  - 支持每轨音量、循环、**音量渐变（淡入淡出）**
+  - 运行时动态增删混音配置
+- **视频导出**（`Exporter`）：**复用同一条渲染链**，保证导出与预览画面完全一致
+  - `MediaCodec` 硬编 + `MediaMuxer` 封装
+  - 特效、贴纸、BGM 全部参与导出
+
+---
 
 ## 效果演示
 
@@ -8,199 +33,174 @@
 |---------------------------|--------------------------|---------------------------| --- |
 | ![复古特效](.img/sticker.png) | ![反相特效](.img/invert.png) | ![黑白滤镜效果](.img/black.png) | ![多特效组合效果](.img/more.png) |
 
-## 项目简介
 
-这是一个基于 Android 平台开发的**实验性**
-视频播放器项目，是对视频播放器渲染技术深入探索的成果。项目支持多视频片段播放、实时预览、视频导出等功能，采用模块化架构设计，包含自定义的媒体处理框架和播放器实现。
 
-> **注意**: 这是一个个人学习和技术探索项目，主要用于研究视频渲染、OpenGL ES、音视频同步、MediaCodec编解码等技术。代码仅供学习参考，不建议直接用于生产环境。
+## 架构概览
 
-## 项目结构
+```
+              ┌────────────────────────────────────────────┐
+              │                   VMPlayer                 │
+              │         （播放器门面，持有播放线程）            │
+              └───────┬──────────────────────────┬─────────┘
+                      │                          │
+              ┌───────▼────────┐        ┌────────▼────────┐
+              │ VideoDecoder   │        │ AudioCompositor │
+              │  Track         │        │  (原始+BGM混音)  │
+              └───────┬────────┘        └────────┬────────┘
+                      │ 原始帧 / PCM              │
+              ┌───────▼────────┐        ┌────────▼────────┐
+              │ PlayerRender   │        │   AudioTrack    │
+              │  + EffectChain │        │   （播放）       │
+              └───────┬────────┘        └─────────────────┘
+                      │
+        预览 ◄────────┤────────► 导出
+     EGLSurface       │        EGLSurface
+     (Window)         │        (MediaCodec Input)
+                      ▼
+                  屏幕 / MP4
+```
+
+
+---
+
+## 目录结构
 
 ```
 VMPlayer/
-├── app/                    # Demo 应用模块
-│   ├── src/main/assets/media/sticker/  # 贴纸资源文件夹
-│   └── src/main/java/.../vmplayer/     # Demo 入口与 UI
-├── vmplayer/               # 核心播放器库模块（可独立发布）
+├── app/                               # 示例 App，演示播放、特效、贴纸、BGM、导出
+│   └── src/main/java/com/vompom/vmplayer/MainActivity.kt
+├── vmplayer/                          # 核心播放器模块（library）
 │   └── src/main/java/com/vompom/media/
-│       ├── render/         # 渲染系统（OpenGL ES）
-│       │   ├── effect/     # 滤镜特效（反转、灰度、复古等）
-│       │   └── sticker/    # 贴纸系统
-│       ├── export/         # 视频导出（编码器、读取器、Muxer）
-│       ├── docode/         # 视频解码（解码器、轨道管理）
-│       ├── player/         # 播放器核心（线程、同步、回调）
-│       ├── model/          # 数据模型
-│       └── utils/          # 工具类
-└── docs/                   # 技术文档
+│       ├── VMPlayer.kt                # 播放器门面
+│       ├── IPlayer.kt                 # 对外 API 接口
+│       ├── docode/                    # 解码：decorder / track
+│       │   ├── decorder/              # BaseDecoder / VideoDecoder / AudioDecoder
+│       │   └── track/                 # 多片段时间轴 + 音频合成
+│       ├── extractor/                 # MediaExtractor 封装
+│       ├── player/                    # 播放线程、音画同步、PlayerView
+│       ├── render/                    # EGL / GLThread / 特效链 / 贴纸
+│       │   ├── effect/                # 滤镜（灰度、复古、反相、RGB）
+│       │   └── sticker/               # 贴纸特效
+│       ├── export/                    # 导出：reader / encoder / muxer
+│       ├── model/                     # 数据模型（ClipAsset、TimeRange、AudioMixConfig…）
+│       └── utils/                     # 工具类（GLUtils、VLog、诊断工具…）
+├── docs/                              # 设计文档与 TODO
+├── .docs/functions.md                 # 后续功能规划与优先级矩阵
+└── deps.gradle                        # 统一依赖管理
 ```
 
-## 技术探索重点
+---
 
-本项目重点探索和实践了以下技术领域：
+## 快速上手
 
--  **自定义视频渲染管线**: 基于 OpenGL ES 构建完整渲染流程
--  **音视频同步机制**: 精确的时间轴管理和音视频同步算法
--  **多线程架构**: 解码、渲染、音频播放的线程协调（Handler + Thread）
--  **内存管理优化**: 纹理缓存、解码器资源管理
--  **视频导出技术**: MediaCodec 编解码和 MediaMuxer 文件输出
--  **片段化播放**: 支持多视频片段的无缝拼接播放
--  **解耦架构设计**: 播放器、解码器、编码器、渲染器的模块化设计
--  **渲染效果/会话系统**: 基于 `VMRenderSession` 的统一特效配置，预览与导出共用一套渲染链
--  **贴纸系统**: 基于 OpenGL ES 的实时贴纸叠加，支持自定义位置、大小、透明度
+### 1. 构建
 
-## 功能特性
-
-### 核心功能
-
-- ✅ **多视频片段播放**: 支持播放多个视频片段组成的播放列表（TrackSegment）
-- ✅ **实时视频预览**: 基于 OpenGL ES 的视频渲染（Surface渲染）
-- ✅ **视频导出**: 支持将播放列表导出为单个 MP4 文件
-- ✅ **播放控制**: 播放、暂停、停止、Seek、进度控制
-- ✅ **时间轴管理**: 精确的时间轴管理和片段切换
-- ✅ **音视频同步**: 基于 AudioTrack 的音视频同步播放
-- ✅ **格式支持**: 支持常见视频格式（MP4、H.264、AAC等）
-- ✅ **视口适配**: 智能视口适配和等比例缩放
-
-### 渲染特效
-
-- ✅ **反转特效** (InvertEffect): 颜色反转
-- ✅ **灰度特效** (GrayscaleEffect): 黑白滤镜
-- ✅ **复古特效** (SepiaEffect): 怀旧色调
-- ✅ **RGB调整** (RGBEffect): 自定义 RGB 通道调整
-- ✅ **特效组合**: 支持多个特效叠加使用
-
-### 贴纸系统
-
-- ✅ **实时贴纸叠加**: 基于 OpenGL ES 的贴纸渲染
-- ✅ **自定义参数**: 支持设置位置（posX/posY）、大小（width/height）、透明度（alpha）
-- ✅ **保持原始比例**: 贴纸自动保持原始宽高比
-- ✅ **随机贴纸**: Demo 支持从贴纸文件夹中随机选择贴纸添加
-- ✅ **导出支持**: 贴纸效果在视频导出时完整保留
-
-### 导出功能特性
-
-- 🎥 **视频编码**: H.264/AVC 视频编码
-- 🎵 **音频编码**: AAC 音频编码
-- 📊 **实时进度**: 导出进度回调
-- ⚙️ **可配置参数**: 分辨率、码率、帧率可自定义
-- 🔄 **多线程处理**: 音视频独立线程处理，提高导出效率
-- 🖼️ **特效与贴纸导出**: 预览中的滤镜特效和贴纸在导出时完整保留
-
-## 核心架构设计
-
-### 1. 播放器架构
-
-```
-VMPlayer (播放器入口)
-    ↓
-PlayerThread (视频线程) + PlayerThreadAudio (音频线程)
-    ↓
-VideoDecoderTrack + AudioDecoderTrack (轨道管理)
-    ↓
-VideoDecoder + AudioDecoder (MediaCodec 解码)
-    ↓
-PlayerRenderer (OpenGL ES 渲染) + AudioTrack (音频播放)
-    ↓
-AVSyncManager (音视频同步)
+```bash
+./gradlew :app:assembleDebug
 ```
 
-### 2. 渲染效果与贴纸系统
+环境要求：
+- Android Studio（AGP 7.3.1）
+- JDK 1.8
+- Kotlin 2.1.x
 
-```
-VMRenderSession (渲染会话，对外的特效配置入口)
-    ↓
-EffectChainManager (特效链管理与同步)
-    ↓
-EffectGroup (特效组合，管理滤镜 + 贴纸)
-    ↓
-├── filterQueue (滤镜队列)
-│   ├── InvertEffect (反转特效)
-│   ├── GrayscaleEffect (灰度特效)
-│   ├── SepiaEffect (复古特效)
-│   ├── RGBEffect (RGB调整特效)
-│   └── 其他自定义特效...
-│
-├── stickerQueue (贴纸队列)
-│   └── StickerEffect (贴纸特效，支持位置/大小/透明度)
-│
-├── RenderEffect / TextureMatrixEffect 等内部特效
-│
-└── PlayerRender (具体渲染器，预览/导出共用)
-```
+### 2. 最小使用示例
 
-### 3. 视口适配系统
+```kotlin
+// 1. 创建渲染会话（持有特效链、贴纸等渲染层资源）
+val renderSession = VMRenderSession.createRenderSession()
 
-```
-GLUtils.initGLViewportFit()
-    ↓
-计算等比例缩放视口
-    ↓
-返回VRect对象 (origin + size)
-    ↓
-PlayerRender.beforeDraw() 应用视口适配
-```
+// 2. 创建播放器（挂到一个 FrameLayout 容器）
+val player = VMPlayer.create(playerContainer, renderSession)
+player.setRenderSize(Size(1280, 720))
 
-### 4. 导出架构
+// 3. 设置播放列表（多个片段会顺序拼接播放）
+player.setPlayList(
+    listOf(
+        ClipAsset(pathA, TimeRange.create(2f, 5f)),  // 从第 2s 开始，截 5s
+        ClipAsset(pathB, TimeRange.create(0f, 3f)),
+    )
+)
 
-```
-Exporter (导出管理器)
-    ↓
-├── RenderModel (渲染数据: effectList + stickerList)
-│   ↓
-│   EffectGroup.createEffectGroup(effects, stickers)
-│   ↓ 重建渲染链（含贴纸克隆）
-│
-├── VideoReader Thread              ├── AudioReader Thread
-│   ↓ 解码                          │   ↓ 解码
-│   VideoReader                     │   AudioReader
-│   ↓ Surface                       │   ↓ PCM数据
-│   VideoEncoder                    │   AudioEncoder
-│   ↓ H.264编码                     │   ↓ AAC编码
-│   └─────────┬─────────────────────┘
-│             ↓
-│        MediaMuxer (合成MP4)
-│             ↓
-│        输出文件 (output.mp4)
+// 4. 进度回调
+player.setPlayerListener(object : IPlayer.PlayerListener {
+    override fun onPositionChanged(currentUs: Long, totalUs: Long) { /* ... */ }
+})
+
+// 5. 播放控制
+player.play()
+player.seekTo(3_000_000L)   // 跳到 3s
+player.pause()
+player.release()
 ```
 
-### 5. 线程模型
+### 3. 添加特效 / 贴纸
 
-- **主线程**: UI交互和生命周期管理
-- **视频解码线程** (HandlerThread): 视频解码和渲染
-- **音频解码线程** (HandlerThread): 音频解码和播放
-- **GLThread**: OpenGL ES 渲染线程
-- **导出视频线程**: 视频读取和编码
-- **导出音频线程**: 音频读取和编码
+```kotlin
+// 添加灰度滤镜
+renderSession.addEffect(
+    VideoEffectEntity(EffectType.GRAYSCALE, "黑白", GrayscaleEffect::class.java)
+)
 
-## 技术栈
+// 添加一张贴纸
+val sticker = StickerEffect(stickerPath, posX = 0.3f, posY = 0.3f, w = 0.2f, h = 0.2f, alpha = 1f)
+renderSession.addSticker(sticker)
+```
 
-- **语言**: Kotlin + Java
-- **最低SDK**: API 21 (Android 5.0)
-- **核心技术**:
-    - MediaCodec (视频编解码)
-    - MediaExtractor (媒体数据提取)
-    - MediaMuxer (媒体文件合成)
-    - OpenGL ES 2.0 (视频渲染)
-    - AudioTrack (音频播放)
-    - HandlerThread (线程管理)
-    - Coroutines (协程-用于导出流程)
+### 4. 添加 BGM（多轨道混音 + 淡入）
 
-## 最新更新
+```kotlin
+val mix = AudioMixConfig().apply {
+    originalVolume = 0.4f
+    addTrack(
+        AudioTrackInputConfig(
+            trackId = 1,
+            filePath = bgmPath,
+            volume = 0.6f,
+            loop = true,
+            volumeRamps = listOf(VolumeRamp(0L, 2_000_000L, 0f, 0.6f)) // 前 2s 淡入
+        )
+    )
+}
+player.setAudioMix(mix)
+```
 
-- ✅ **贴纸系统**: 支持实时贴纸叠加，可自定义位置、大小、透明度，保持原始宽高比
-- ✅ **贴纸导出支持**: 修复导出链路中贴纸数据丢失问题，导出 MP4 完整保留贴纸效果
-- ✅ **Demo 贴纸体验**: 支持从贴纸文件夹随机选择贴纸添加
-- ✅ **模块重命名**: 核心库模块从 `media` 重命名为 `vmplayer`
-- ✅ **GitHub Packages 发布**: 新增 Gradle 发布脚本，支持将库发布到 GitHub Packages
-- ✅ **UI 优化**: 功能按钮改为 RecyclerView 实现，播放/暂停按钮集成到进度条两侧
-- ✅ **渲染效果系统**: 支持多种视频特效（反转、灰度、复古、RGB调整）和滤镜处理
-- ✅ **视口适配功能**: 智能计算等比例缩放的视口配置
+### 5. 导出（复用同一条渲染链）
 
-## 开发计划
+```kotlin
+val config = Exporter.ExportConfig(
+    outputFile = outputFile,
+    outputSize = Size(1280, 720),
+    videoBitRate = 2_000_000,
+    frameRate = 30
+)
 
-- 🔄 **性能优化**: 渲染管线优化和内存管理改进
-- 🔄 **更多特效**: 添加模糊、锐化、色彩调整等特效
-- 🔄 **贴纸交互**: 支持手势拖拽、缩放、旋转贴纸
-- 🔄 **文字叠加**: 支持动态文字水印
-- 🔄 **硬件加速**: 进一步优化MediaCodec使用效率
+player.createExporter().export(outputFile, config, object : Exporter.ExportListener {
+    override fun onExportStart() {}
+    override fun onExportProgress(progress: Float) {}
+    override fun onExportComplete(file: File) {}
+    override fun onExportError(e: Exception) {}
+})
+```
+
+
+
+## 已踩过的坑 / 已解决的问题
+
+- 多片段解码切换时的状态残留与资源释放顺序
+- 音画线程同步（`AVSyncManager` 的演进）
+- 跨片段 seek、快速拖动下的音画一致性
+- 画布大小与视频源尺寸的视口适配
+- 导出音频时长不准（PTS 与采样数对不齐）
+- 视频预览添加的特效如何一致地走进导出链路
+- 多片段切换时音频轨道的衔接与瞬断
+
+---
+
+## 后续计划（Roadmap）
+
+- 多轨道音频/视频播放优化处理
+- 亮度/对比度/饱和度、高斯模糊、暗角、马赛克、视频旋转翻转、特效时间范围控制
+- 贴纸手势交互、视频区间变速播放、视频裁剪、帧截图 / 缩略图
+- 转场、文字叠加 / 动态字幕、画中画、PAG 特效
+- 软硬解兼容切换

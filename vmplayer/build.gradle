@@ -63,7 +63,7 @@ afterEvaluate {
                 pom {
                     name = 'VMPlayer'
                     description = 'VMPlayer - Android 视频播放器库'
-                    url = 'https://github.com/YOUR_GITHUB_USERNAME/VMPlayer'
+                    url = 'https://github.com/vompom/VMPlayer'
 
                     licenses {
                         license {
@@ -78,7 +78,7 @@ afterEvaluate {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/YOUR_GITHUB_USERNAME/VMPlayer")
+                url = uri("https://maven.pkg.github.com/vompom/VMPlayer")
                 credentials {
                     username = localProperties.getProperty("gpr.user") ?: System.getenv("GITHUB_USER")
                     password = localProperties.getProperty("gpr.token") ?: System.getenv("GITHUB_TOKEN")

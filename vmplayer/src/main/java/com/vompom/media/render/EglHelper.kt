@@ -4,6 +4,7 @@ import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.EGLContext
 import android.opengl.EGLDisplay
+import android.opengl.EGLExt
 import android.opengl.EGLSurface
 import android.opengl.GLES20
 import android.util.Size
@@ -151,6 +152,18 @@ class EglHelper(val encodeSurface: Surface? = null, val playerView: WeakReferenc
         }
     }
 
+
+    /**
+     * 设置当前帧的 PTS（纳秒），用于导出模式下通过 EGL 传递给视频编码器
+     * 必须在 eglSwapBuffers 之前调用
+     *
+     * @param nanos 当前帧的 PTS，单位纳秒
+     */
+    fun setPresentationTime(nanos: Long) {
+        if (eglDisplay != null && eglSurface != null) {
+            EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, nanos)
+        }
+    }
 
     /**
      * Display the current render surface.
