@@ -10,22 +10,22 @@ import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.flexbox.FlexboxLayoutManager
 import com.vompom.media.IPlayer
-import com.vompom.media.VMPlayer
-import com.vompom.media.export.Exporter.ExportConfig
-import com.vompom.media.export.Exporter.ExportListener
+import com.vompom.media.effect.VMPlayerFactory
+import com.vompom.media.effect.model.EffectType
+import com.vompom.media.effect.model.VideoEffectEntity
+import com.vompom.media.effect.render.VMRenderSession
+import com.vompom.media.effect.render.effect.GrayscaleEffect
+import com.vompom.media.effect.render.effect.InvertEffect
+import com.vompom.media.effect.render.effect.RGBEffect
+import com.vompom.media.effect.render.effect.SepiaEffect
+import com.vompom.media.effect.render.sticker.StickerEffect
+import com.vompom.media.export.ExportConfig
+import com.vompom.media.export.ExportListener
 import com.vompom.media.model.AudioMixConfig
 import com.vompom.media.model.AudioTrackInputConfig
 import com.vompom.media.model.ClipAsset
-import com.vompom.media.model.EffectType
 import com.vompom.media.model.TimeRange
-import com.vompom.media.model.VideoEffectEntity
 import com.vompom.media.model.VolumeRamp
-import com.vompom.media.render.VMRenderSession
-import com.vompom.media.render.effect.GrayscaleEffect
-import com.vompom.media.render.effect.InvertEffect
-import com.vompom.media.render.effect.RGBEffect
-import com.vompom.media.render.effect.SepiaEffect
-import com.vompom.media.render.sticker.StickerEffect
 import com.vompom.media.utils.formatTimeFromUs
 import com.vompom.vmplayer.adapter.ActionAdapter
 import com.vompom.vmplayer.adapter.ActionItem
@@ -227,7 +227,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initPlayer() {
-        player = VMPlayer.create(binding.flPlayer, renderSession)
+        player = VMPlayerFactory.create(binding.flPlayer, renderSession)
         player.setRenderSize(Size(1280, 720))
         player.setPlayList(
             listOf(

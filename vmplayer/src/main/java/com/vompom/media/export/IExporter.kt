@@ -1,7 +1,5 @@
 package com.vompom.media.export
 
-import com.vompom.media.export.Exporter.ExportConfig
-import com.vompom.media.export.Exporter.ExportListener
 import java.io.File
 
 /**
@@ -12,6 +10,6 @@ import java.io.File
  */
 
 interface IExporter {
-    fun export(outputFile: File?, config: ExportConfig , listener: ExportListener?)
+    fun export(outputFile: File?, config: ExportConfig, listener: ExportListener?)
     fun stopExport()
 }

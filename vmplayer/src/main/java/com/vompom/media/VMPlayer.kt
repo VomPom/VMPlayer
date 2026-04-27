@@ -1,36 +1,33 @@
 package com.vompom.media
 
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.util.Size
 import android.view.Surface
-import android.view.ViewGroup
-import android.widget.FrameLayout
-import com.vompom.media.docode.decorder.AudioDecoder
-import com.vompom.media.docode.decorder.VideoDecoder
 import com.vompom.media.docode.track.AudioCompositionTrack
 import com.vompom.media.docode.track.VideoDecoderTrack
-import com.vompom.media.export.Exporter
 import com.vompom.media.export.IExporter
+import com.vompom.media.export.IExporterFactory
 import com.vompom.media.model.AudioMixConfig
 import com.vompom.media.model.ClipAsset
 import com.vompom.media.model.TrackSegment
-import com.vompom.media.player.IPlayerView
 import com.vompom.media.player.PlayerThread
-import com.vompom.media.player.PlayerView
-import com.vompom.media.render.PlayerRender
 
 /**
  *
  * Created by @juliswang on 2025/09/25 20:42
  *
- * @Description 基于 [VideoDecoder] [AudioDecoder] 包装播放器，协调整个播放流程，管理播放状态
+ * @Description 基于 [com.vompom.media.docode.decorder.VideoDecoder] [com.vompom.media.docode.decorder.AudioDecoder]
+ *              包装的播放器，协调整个播放流程，管理播放状态。
  *
+ *              该类仅负责「视频编解码 + 音频合成 + 播放时序调度」，
+ *              所有 OpenGL / 特效 / 贴纸 / View 相关逻辑由 `vmplayer-effect` 模块通过
+ *              [IRenderSurfaceProvider] 与 [IExporterFactory] 注入。
  */
 class VMPlayer : IPlayer, Handler.Callback {
-    private val renderSession: IRenderSession
+    private val surfaceProvider: IRenderSurfaceProvider
+    private val exporterFactory: IExporterFactory
     private var segments: List<TrackSegment> = emptyList()
     private var durationUs: Long = -1L
 
@@ -41,7 +38,6 @@ class VMPlayer : IPlayer, Handler.Callback {
     private var loop = true
     private var renderSize = Size(DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT)
     private var playUs: Long = 0L
-    private var playerView: IPlayerView? = null
     private var audioMixConfig: AudioMixConfig? = null
     // 持有当前正在使用的 AudioCompositionTrack 引用，用于动态更新混音配置
     private var currentAudioTrack: AudioCompositionTrack? = null
@@ -53,43 +49,26 @@ class VMPlayer : IPlayer, Handler.Callback {
         const val DEFAULT_RENDER_WIDTH = 1280
         const val DEFAULT_RENDER_HEIGHT = 720
 
-        fun create(frameLayout: FrameLayout, renderSession: IRenderSession): VMPlayer {
-            return VMPlayer(frameLayout, renderSession)
-        }
+        /**
+         * 核心构造入口：由 `vmplayer-effect` 模块的高层工厂调用，传入已经准备好的
+         * [IRenderSurfaceProvider]（带 OpenGL / 特效能力）和 [IExporterFactory]（带渲染链的导出器）。
+         */
+        fun create(
+            surfaceProvider: IRenderSurfaceProvider,
+            exporterFactory: IExporterFactory
+        ): VMPlayer = VMPlayer(surfaceProvider, exporterFactory)
     }
 
-    private constructor(playerContainer: FrameLayout, renderSession: IRenderSession) {
-        this.renderSession = renderSession
-        initContentView(playerContainer)
-    }
-
-    private fun initContentView(playerContainer: FrameLayout) {
-        val playerView = createTexturePlayerView(playerContainer.context)
-        playerContainer.addView(
-            playerView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-    }
-
-    private fun createTexturePlayerView(context: Context): PlayerView {
-        val playerRender = createRender()
-        val playerView = PlayerView(context).apply {
-            setRenderSize(renderSize)
-            setRenderer(playerRender)
-        }
-        renderSession.attachRenderChain(playerView.getGLThread(), playerRender)
-        return playerView
-    }
-
-    private fun createRender(): PlayerRender {
-        return PlayerRender().apply {
-            initRenderSize(renderSize)
-            setSurfaceReadyCallback { surface ->
-                onSurfaceCreate(surface)
-            }
+    private constructor(
+        surfaceProvider: IRenderSurfaceProvider,
+        exporterFactory: IExporterFactory
+    ) {
+        this.surfaceProvider = surfaceProvider
+        this.exporterFactory = exporterFactory
+        // 绑定 Surface 就绪回调：当特效侧的 OES SurfaceTexture 创建完毕后，
+        // 会把用于解码器输出的 Surface 传给我们。
+        this.surfaceProvider.setOnSurfaceReady { surface ->
+            onSurfaceCreate(surface)
         }
     }
 
@@ -98,7 +77,7 @@ class VMPlayer : IPlayer, Handler.Callback {
         val audioTrack = AudioCompositionTrack(segments, audioMixConfig)
         currentAudioTrack = audioTrack
         videoTrack.setVideoSizeChangeListener { videoSize ->
-            playerView?.updateVideoSize(videoSize)
+            surfaceProvider.updateVideoSize(videoSize)
         }
         playerThread = PlayerThread(this, videoTrack, audioTrack).apply {
             sendMessage(PlayerThread.Companion.ACTION_PREPARE)
@@ -139,7 +118,7 @@ class VMPlayer : IPlayer, Handler.Callback {
 
     override fun release() {
         playerThread?.release()
-        playerView?.release()
+        surfaceProvider.release()
     }
 
     override fun duration(): Long {
@@ -153,8 +132,7 @@ class VMPlayer : IPlayer, Handler.Callback {
 
     override fun setRenderSize(size: Size) {
         this.renderSize = size
-        playerView?.setRenderSize(size)
-        renderSession.updateRenderSize(size)
+        surfaceProvider.setRenderSize(size)
     }
 
     override fun setLoop(loop: Boolean) {
@@ -178,13 +156,11 @@ class VMPlayer : IPlayer, Handler.Callback {
     }
 
     /**
-     * fixme:这里待完善，目前通过 renderSession 作为中间层，获取渲染数据，maybe 有更好的方式
-     *
-     * @return
+     * 通过注入进来的 [IExporterFactory] 创建导出器，
+     * 核心模块不感知具体的渲染/特效逻辑。
      */
     override fun createExporter(): IExporter {
-        val renderModel = renderSession.getRenderModel()
-        return Exporter(segments, renderModel, audioMixConfig)
+        return exporterFactory.create(segments, audioMixConfig)
     }
 
     override fun handleMessage(msg: Message): Boolean {

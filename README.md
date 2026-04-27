@@ -19,7 +19,7 @@
   - 原始音频 + 多路 BGM 叠加
   - 支持每轨音量、循环、**音量渐变（淡入淡出）**
   - 运行时动态增删混音配置
-- **视频导出**（`Exporter`）：**复用同一条渲染链**，保证导出与预览画面完全一致
+- **视频导出**（`IExporterFactory` + `vmplayer-effect` 侧 `Exporter`）：**复用同一条渲染链**，保证导出与预览画面完全一致
   - `MediaCodec` 硬编 + `MediaMuxer` 封装
   - 特效、贴纸、BGM 全部参与导出
 
@@ -38,27 +38,29 @@
 ## 架构概览
 
 ```
-              ┌────────────────────────────────────────────┐
-              │                   VMPlayer                 │
-              │         （播放器门面，持有播放线程）            │
-              └───────┬──────────────────────────┬─────────┘
-                      │                          │
-              ┌───────▼────────┐        ┌────────▼────────┐
-              │ VideoDecoder   │        │ AudioCompositor │
-              │  Track         │        │  (原始+BGM混音)  │
-              └───────┬────────┘        └────────┬────────┘
-                      │ 原始帧 / PCM              │
-              ┌───────▼────────┐        ┌────────▼────────┐
-              │ PlayerRender   │        │   AudioTrack    │
-              │  + EffectChain │        │   （播放）       │
-              └───────┬────────┘        └─────────────────┘
-                      │
-        预览 ◄────────┤────────► 导出
-     EGLSurface       │        EGLSurface
-     (Window)         │        (MediaCodec Input)
-                      ▼
-                  屏幕 / MP4
+        ┌──────────────────────────── app ────────────────────────────────┐
+        │   通过 VMPlayerFactory 组装播放器 + 注入渲染/导出实现                 │
+        └──────────┬───────────────────────────────────────┬────────────────────┘
+                   │                                            │
+  ┌─────────────────▼─────────────────────┐  ┌───────▼────────────────────────────────┐
+  │                vmplayer                  │  │        vmplayer-effect              │
+  │  （视频编解码 / 音轨合成 / 播放调度）       │  │  （OpenGL / 特效 / 贴纸 / 渲染视图）        │
+  │                                            │  │                                     │
+  │  VMPlayer  ◄─── IRenderSurfaceProvider ◄─┼── RenderSurfaceProvider               │
+  │            ◄─── IExporterFactory       ◄─┼── ExporterFactory + Exporter           │
+  │     │                                      │  │           │                         │
+  │     ▼                                      │  │           ▼                         │
+  │ VideoDecoderTrack    AudioCompositor       │  │  PlayerView / PlayerRender          │
+  │ （解码+seek）         （原声+BGM混音）           │  │  EffectChain / Sticker              │
+  └────────────────────┬─────────────────────┘  └─────────────┬──────────────────────────┘
+                      │ SurfaceTexture / PCM                │
+                      ▼                                     ▼
+                  AudioTrack                           屏幕 / MP4
+                   播放                                 预览/导出
 ```
+
+> 架构约束：vmplayer 不依赖 vmplayer-effect，单向依赖。effect 侧通过 `IRenderSurfaceProvider` / `IExporterFactory` 把 OpenGL 与导出能力注入回播放核心。
+> 注：BGM / 音轨混音因与播放调度强相关，目前仍留在 `vmplayer`；后续可视情况移到 `vmplayer-effect` 。
 
 
 ---
@@ -69,21 +71,30 @@
 VMPlayer/
 ├── app/                               # 示例 App，演示播放、特效、贴纸、BGM、导出
 │   └── src/main/java/com/vompom/vmplayer/MainActivity.kt
-├── vmplayer/                          # 核心播放器模块（library）
+├── vmplayer/                          # 核心播放器模块（library）——只做视频编解码 / 音轨合成 / 播放调度
 │   └── src/main/java/com/vompom/media/
-│       ├── VMPlayer.kt                # 播放器门面
+│       ├── VMPlayer.kt                # 播放器门面（通过 IRenderSurfaceProvider / IExporterFactory 注入渲染与导出实现）
 │       ├── IPlayer.kt                 # 对外 API 接口
+│       ├── IRenderSurfaceProvider.kt  # 渲染侧抽象：供特效模块注入 Surface 与渲染链
 │       ├── docode/                    # 解码：decorder / track
 │       │   ├── decorder/              # BaseDecoder / VideoDecoder / AudioDecoder
-│       │   └── track/                 # 多片段时间轴 + 音频合成
+│       │   └── track/                 # 多片段时间轴 + 音频合成（BGM 混音暂留此处）
 │       ├── extractor/                 # MediaExtractor 封装
-│       ├── player/                    # 播放线程、音画同步、PlayerView
-│       ├── render/                    # EGL / GLThread / 特效链 / 贴纸
+│       ├── player/                    # 播放线程、音画同步
+│       ├── export/                    # 导出编解码器：reader / encoder / muxer + IExporterFactory / ExportConfig / ExportListener
+│       ├── model/                     # 数据模型（ClipAsset、TimeRange、AudioMixConfig…）
+│       └── utils/                     # 工具类（VLog、诊断工具…）
+├── vmplayer-effect/                   # 特效模块（library）——OpenGL / 特效 / 贴纸 / 渲染视图 / 导出渲染链
+│   └── src/main/java/com/vompom/media/effect/
+│       ├── VMPlayerFactory.kt         # 组装入口：把 effect 的 Provider/Factory 注入到 VMPlayer
+│       ├── IRenderSession.kt          # 渲染会话抽象
+│       ├── player/                    # PlayerView / RenderSurfaceProvider
+│       ├── render/                    # EGL / GLThread / PlayerRender / EffectChainManager
 │       │   ├── effect/                # 滤镜（灰度、复古、反相、RGB）
 │       │   └── sticker/               # 贴纸特效
-│       ├── export/                    # 导出：reader / encoder / muxer
-│       ├── model/                     # 数据模型（ClipAsset、TimeRange、AudioMixConfig…）
-│       └── utils/                     # 工具类（GLUtils、VLog、诊断工具…）
+│       ├── export/                    # Exporter + ExporterFactory（复用预览渲染链）
+│       ├── model/                     # 渲染相关模型（RenderModel、VideoEffectEntity、EffectType、Sticker、TextureInfo）
+│       └── utils/                     # GLUtils 等 OpenGL 辅助工具
 ├── docs/                              # 设计文档与 TODO
 ├── .docs/functions.md                 # 后续功能规划与优先级矩阵
 └── deps.gradle                        # 统一依赖管理
@@ -107,11 +118,12 @@ VMPlayer/
 ### 2. 最小使用示例
 
 ```kotlin
-// 1. 创建渲染会话（持有特效链、贴纸等渲染层资源）
+// 1. 创建渲染会话（特效模块，持有特效链、贴纸等渲染层资源）
 val renderSession = VMRenderSession.createRenderSession()
 
-// 2. 创建播放器（挂到一个 FrameLayout 容器）
-val player = VMPlayer.create(playerContainer, renderSession)
+// 2. 通过特效模块的 VMPlayerFactory 创建播放器（挂到一个 FrameLayout 容器）
+//    VMPlayerFactory 位于 vmplayer-effect，负责把渲染/导出实现注入给 vmplayer
+val player = VMPlayerFactory.create(playerContainer, renderSession)
 player.setRenderSize(Size(1280, 720))
 
 // 3. 设置播放列表（多个片段会顺序拼接播放）
@@ -168,14 +180,14 @@ player.setAudioMix(mix)
 ### 5. 导出（复用同一条渲染链）
 
 ```kotlin
-val config = Exporter.ExportConfig(
+val config = ExportConfig(
     outputFile = outputFile,
     outputSize = Size(1280, 720),
     videoBitRate = 2_000_000,
     frameRate = 30
 )
 
-player.createExporter().export(outputFile, config, object : Exporter.ExportListener {
+player.createExporter().export(outputFile, config, object : ExportListener {
     override fun onExportStart() {}
     override fun onExportProgress(progress: Float) {}
     override fun onExportComplete(file: File) {}

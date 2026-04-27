@@ -1,3 +1,4 @@
 rootProject.name = "VMPlayer"
 include ':app'
 include ':vmplayer'
+include ':vmplayer-effect'

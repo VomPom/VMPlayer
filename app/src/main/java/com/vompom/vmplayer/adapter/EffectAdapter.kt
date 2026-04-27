@@ -5,7 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.vompom.media.model.VideoEffectEntity
+import com.vompom.media.effect.model.VideoEffectEntity
 import com.vompom.vmplayer.R
 
 /**
